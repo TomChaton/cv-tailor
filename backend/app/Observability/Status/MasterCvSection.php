@@ -2,13 +2,16 @@
 
 namespace App\Observability\Status;
 
+use App\MasterCv\ReadMasterCv;
 use Carbon\CarbonImmutable;
 use Illuminate\Filesystem\Filesystem;
+use Throwable;
 
 class MasterCvSection implements StatusSection
 {
     public function __construct(
         private readonly Filesystem $files,
+        private readonly ReadMasterCv $read,
         private readonly string $path,
     ) {}
 
@@ -33,9 +36,38 @@ class MasterCvSection implements StatusSection
             $rows['modified'] = CarbonImmutable::createFromTimestamp(
                 $this->files->lastModified($this->path)
             )->toIso8601String();
+
+            $rows = [...$rows, ...$this->parse()];
         }
 
         return $rows;
+    }
+
+    /**
+     * The version the file parses to now, and whether it would be refused.
+     *
+     * Both are read live rather than recalled: the file on disk is the editing
+     * surface, so the question this answers is "what would generating from it
+     * use, and would it be allowed to".
+     *
+     * @return array<string, string>
+     */
+    private function parse(): array
+    {
+        try {
+            [, $parsed, $report] = $this->read->handle($this->path);
+        } catch (Throwable) {
+            return ['lint' => 'could not be checked'];
+        }
+
+        $problems = count($report->problems());
+
+        return [
+            'version' => $parsed->hash(),
+            'lint' => $problems === 0
+                ? 'passing'
+                : $problems.' problem'.($problems === 1 ? '' : 's').': run php artisan cv:lint',
+        ];
     }
 
     private function state(): MasterCvState

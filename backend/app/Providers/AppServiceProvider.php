@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Http\TrustedProxies;
+use App\MasterCv\ReadMasterCv;
 use App\Observability\Listeners\RecordWorkerHeartbeat;
 use App\Observability\Status\MasterCvSection;
 use Illuminate\Contracts\Foundation\Application;
@@ -34,9 +35,9 @@ class AppServiceProvider extends ServiceProvider
             },
         );
 
-        // Contextual binding: this one class wants the master CV path, and the
+        // Contextual binding: these classes want the master CV path, and the
         // alternative is a config lookup buried inside domain code.
-        $this->app->when(MasterCvSection::class)
+        $this->app->when([MasterCvSection::class, ReadMasterCv::class])
             ->needs('$path')
             ->give(fn (): string => Config::string('cv.master_cv.path'));
     }

@@ -44,12 +44,43 @@ as the starter template for other users.
   so a parent can be selected whole or narrowed to some of its children.
 - **IDs are written by hand, never derived from content.** Rewording a bullet
   must not change its identity, or revision history would lose track of it.
+  **Skills-index rows are the exception**: their ID is a slug of the skill's
+  name, because a skill *is* its name — renaming one is changing which skill it
+  is — and deriving them keeps a few hundred units out of the set the author
+  maintains by hand. The cost is bounded and accepted: reword a skill and an
+  old revision cites an ID that no longer resolves, the validators say so, and
+  rendered PDFs are untouched.
 - **Recognised sections** are found by heading: agent rules, contact, headline
   titles, profile facts, skills index, employment history, independent
   projects, awards, interests, and "Do not claim". Their roles are below.
+  Awards, interests and independent projects are things a person may not have,
+  so their absence is a fact about them rather than a defect in the file; the
+  rest are required.
+- **Section headings are matched tolerantly** of a trailing parenthetical or
+  dash qualifier, because real headings carry them ("Headline titles (any may
+  be used)"). Matching on the exact string fails on the file people write.
+  A heading the parser does not recognise closes the section above it rather
+  than extending it: content filed under a heading of the author's own is not
+  content they filed under the previous one.
+- **A bullet's meaning comes from the labelled block above it.** Under "Tech
+  stack" it is inventory and not selectable; under "Context" it is prose;
+  under anything else it is a selectable achievement. Labelled metadata
+  bullets (`- **Dates:** …`) are identified by the colon sitting *inside* the
+  bold markers, which is what separates them from an achievement opening with
+  a bold lead-in. **An unrecognised block label is reported and never
+  refused** — its bullets are achievements, which is almost always what was
+  meant, and a format that rejects a heading its author invented is a format
+  its author stops maintaining. The same applies to metadata keys and to front
+  matter keys the parser does not know.
+- **The skills index has two row forms** — a two-column table of skill and
+  where it was used, and a plain bullet list — and both are supported, because
+  both are what people write. A list row often says nothing about where the
+  skill was used, and a row claiming no evidence has none to check.
 - **Unknown-detail markers** — `TODO`, and phrases such as "not recorded" or
   "do not elaborate" — are part of the format. Content carrying `TODO` is never
   selectable. Content carrying "do not elaborate" may be used verbatim only.
+  Both are inherited by sub-bullets: a child of an unknown bullet is as unknown
+  as its parent.
 
 ### Three kinds of content
 
@@ -57,22 +88,38 @@ The parser separates what the file mixes:
 
 - **Rules** — the agent rules section and the "Do not claim" section. Sent to
   the model verbatim, and also the source of deterministic checks.
-- **Facts** — roles, achievements, skills, projects, profile facts. The only
-  material the model may select from.
+- **Facts** — roles, achievements, skills, projects, profile facts, headline
+  titles. The only material the model may select from.
 - **Identity** — the contact section. **Never sent to the LLM.** The rendered
   CV header comes from these fields through the template, so the model cannot
   mistype a phone number it never sees.
 
+The parse keeps identity in one place and offers the rest as the only material
+bound for the model, so leaking it takes a deliberate act rather than an
+oversight. The front matter goes with identity rather than with the facts: it
+is document bookkeeping — who the CV is for, when it was last touched — and
+only the presentation policy derived from it is of any use downstream.
+
 ### Presentation policy
 
 Generation needs settings the CV's facts do not hold: target length, default
-role modes (e.g. roles ending before a cutoff year default to `condensed`),
-and which headline titles are on offer. These live in the CV's front matter so
-each user's policy travels with their CV. Defaults apply when absent.
+role modes, and which headline titles are on offer. These live in the CV's
+front matter so each user's policy travels with their CV.
+
+**The policy is optional, and absent is the normal case**, so the defaults are
+the ordinary path rather than a fallback and their absence is never a lint
+failure. With no cutoff years configured every role defaults to `full`: that is
+the honest reading of an author who has said nothing about length, and the safe
+one, since a default of `full` cannot hide a role they wanted shown.
+
+**Role modes are driven by two cutoff years** — a role ending before the first
+defaults to `condensed`, before the second to `omitted`. Two are needed because
+the model may only promote a role above its default: with one cutoff `omitted`
+is unreachable and every role appears on every CV.
 
 ### Linting
 
-`php artisan cv:lint <path>` checks a master CV before it is used, and every
+`php artisan cv:lint` checks a master CV before it is used, and every
 generation run refuses a CV that fails it:
 
 - IDs present on every selectable unit, unique, and well-formed.
@@ -82,8 +129,40 @@ generation run refuses a CV that fails it:
   will drift; the linter is what stops that.
 - Recognised sections present.
 
+A finding is a **problem** or a **note**, and only problems fail the lint.
+Notes are for what the author chose and the tool merely does not know: a
+one-off block label, a part of a "where used" cell that names nothing while the
+rest of it names a real role.
+
+**The index and the stacks are never written in the same words** — the index
+says "AWS SQS (incl. dead-letter replay)" where a stack says "SQS" — so the
+coverage check matches generously: a skill contributes its name without
+parentheticals, its parentheticals' contents, and the whole row as aliases; a
+term matches when its words are among an alias's; and failing that, version
+numbers are dropped from both sides. The question this check asks is whether
+the index knows the technology at all. Whether a version is right for a role is
+a different question, asked of generated output by a check of its own.
+
 Lint output names the line and the problem. It is written for the CV's author,
-not for a developer.
+not for a developer. The exit code is non-zero on failure, so generation and
+the scheduler can both rely on it.
+
+### Bootstrapping the IDs
+
+`php artisan cv:id <source> [destination]` writes the IDs a CV is missing and
+emits the whole document, to a path or to standard output. It exists because no
+CV can be generated from until IDs exist, and a CV written before them has
+none.
+
+- **It never writes in place.** The master CV's mount is read-only by
+  deliberate decision, and this command is not the reason to undo that. The
+  author reads a diff and adopts the result themselves.
+- **It is idempotent**, and preserves everything but the IDs it adds, so the
+  diff the author reads contains nothing else.
+- **A role takes a slug of its employer; a bullet takes a number**, counted on
+  from the highest its siblings already use. Nothing of a bullet's wording is
+  in its ID, so no rewording can make an ID look wrong and tempt the author
+  into "fixing" it — which is the one change that would break the history.
 
 ### Versioning
 
@@ -92,6 +171,43 @@ At each generation the parsed CV is hashed and stored in `master_cv_versions`
 (hash, raw content, parsed structure), deduplicated by hash. Every revision
 references the exact version it was generated from. This does not depend on
 the user keeping their CV in git.
+
+**The parse is hashed rather than the file**, so what identifies a version is
+what was used rather than the bytes it was read from. Line numbers are part of
+the parse — lint and the review UI address facts by line — so a reflow produces
+a new version. Erring towards a new version costs a row and never misattributes
+a revision.
+
+### The fictional fixture
+
+`tests/Fixtures/master-cv.md` is a fictional CV that exercises every feature of
+the format, and doubles as the starter template for anyone else running this.
+It reads as a plausible CV rather than as a test matrix, because a template
+nobody would want to edit is a template nobody adopts. In it:
+
+- **Front matter** carries a populated presentation policy and keys the parser
+  ignores.
+- **Skills index**: four table-form subsections and two list-form ones, one of
+  which has rows with no "where used" at all.
+- **Roles**: one with a context block and ones without; metadata keys beyond
+  those the tool knows; a one-off block label; sub-bullets; and four roles whose
+  end years exercise `full`, `condensed` and `omitted` against the policy's
+  cutoffs.
+- **Independent projects**: one with blocks and a labelled value on a line of
+  its own, one whose tech stack is written as a metadata bullet instead.
+- **Markers**: `TODO`, "not recorded" and "do not elaborate", each on content
+  that shows what it does to selectability.
+- **Optional sections** — awards, interests, independent projects — are all
+  present, so what the parser does with them is covered.
+
+`tests/Fixtures/master-cv/minimal.md` is the smallest CV that passes lint, and
+`tests/Fixtures/master-cv/broken-*.md` are variants of it that each differ by
+one line: a duplicate ID, a missing ID, a skills row naming a role that does
+not exist, a tech-stack entry missing from the index, a missing section. One
+defect per file, one line apart from a file that passes, so what a check is
+reacting to is visible in a diff.
+
+No part of any fixture derives from a real CV.
 
 ## Data model
 
@@ -372,7 +488,10 @@ It shows:
   a section and leaves the ones above it alone.
 - **Artisan command output is developer-facing** and does not live in a
   language catalogue. `lang/en_GB` is for words the owner reads in the review
-  UI.
+  UI. `cv:lint` is the edge case that proves the rule: its words are written
+  for the CV's author rather than for a developer, and they still belong in the
+  command, because the catalogue is the review UI's and a terminal is not a
+  surface it serves.
 
 ## Testing
 
@@ -410,9 +529,16 @@ toolchain:
 | What the stack is doing | `docker compose exec app php artisan cv:status` |
 | Create or update the owner | `docker compose exec app php artisan cv:owner` |
 | Issue an extension token | `docker compose exec app php artisan cv:token` |
+| Check the master CV | `docker compose exec app php artisan cv:lint` |
+| Add the IDs a master CV is missing | `docker compose exec app php artisan cv:id /var/lib/cv-tailor/master-cv.md > master-cv-with-ids.md` |
 
 `cv:owner` prompts, and takes `--name`, `--email` and `--password` when a
 script needs it. `cv:token` prints the token once; only its hash is stored.
+
+`cv:lint` checks the mounted CV, and takes a path when another file is wanted.
+`cv:id` reads the mounted CV and writes elsewhere — standard output above, or a
+path given as a second argument; the mount is read-only, so there is nowhere
+inside the container to write it but `/tmp`.
 
 ### Two things that are easy to get wrong
 
@@ -422,10 +548,3 @@ script needs it. `cv:token` prints the token once; only its hash is stored.
 - **Configuration is never cached.** It arrives as container environment
   variables, and a cached config file would freeze whatever happened to be set
   when the image was built.
-
-## Briefing gaps
-
-- **`cv:lint`.** The containerised command for linting a master CV, to be added
-  with the linter.
-- **Fictional master CV fixture.** The fixture exists and exercises every
-  format feature; record its path and what each part of it is for.
