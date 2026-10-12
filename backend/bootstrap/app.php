@@ -12,17 +12,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // The application listens on plain HTTP and knows nothing about how
-        // traffic reaches it, so the trusted set is deployment configuration.
-        // Authentication never relies on a proxy: see the system briefing.
-        $proxies = array_values(array_filter(array_map(
-            'trim',
-            explode(',', (string) env('TRUSTED_PROXIES')),
-        )));
-
-        if ($proxies !== []) {
-            $middleware->trustProxies(at: $proxies === ['*'] ? '*' : $proxies);
-        }
+        // Trusted proxies are configured in AppServiceProvider, where the
+        // config repository is certain to have been loaded. This callback runs
+        // when the HTTP kernel is resolved, which is earlier than that.
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         // A reported exception is a log line like any other, and every line

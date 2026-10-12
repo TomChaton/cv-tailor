@@ -52,19 +52,64 @@ class CvStatusCommandTest extends TestCase
         $this->artisan('cv:status')
             ->expectsOutputToContain('Master CV')
             ->expectsOutputToContain(basename($path))
-            ->expectsOutputToContain('yes')
+            ->expectsOutputToContain('readable')
+            ->expectsOutputToContain('modified')
             ->assertSuccessful();
 
         unlink($path);
     }
 
-    public function test_it_reports_a_master_cv_it_cannot_read(): void
+    public function test_it_reports_a_master_cv_that_is_not_there(): void
     {
         config(['cv.master_cv.path' => '/var/lib/cv-tailor/nothing-here.md']);
 
         $this->artisan('cv:status')
             ->expectsOutputToContain('nothing-here.md')
-            ->expectsOutputToContain('unknown')
+            ->expectsOutputToContain('not found')
+            ->doesntExpectOutputToContain('modified')
             ->assertSuccessful();
+    }
+
+    /**
+     * Docker creates an empty directory when a bind mount's source is missing,
+     * so a wrong `MASTER_CV_HOST_PATH` arrives in the container looking like
+     * this. It must not read as a present, readable CV.
+     */
+    public function test_it_reports_a_directory_as_a_directory(): void
+    {
+        $path = sys_get_temp_dir().'/master-cv-'.bin2hex(random_bytes(6));
+        mkdir($path);
+        config(['cv.master_cv.path' => $path]);
+
+        $this->artisan('cv:status')
+            ->expectsOutputToContain('a directory, not a file')
+            ->doesntExpectOutputToContain('modified')
+            ->assertSuccessful();
+
+        rmdir($path);
+    }
+
+    public function test_it_reports_a_master_cv_it_may_not_read(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'master-cv');
+        $this->assertIsString($path);
+        file_put_contents($path, "# Fictional Person\n");
+        chmod($path, 0o000);
+
+        if (is_readable($path)) {
+            // Tests run as root in some containers, where a mode of 000 still
+            // reads. Nothing to assert there.
+            unlink($path);
+            $this->markTestSkipped('This user can read a file with no permissions.');
+        }
+
+        config(['cv.master_cv.path' => $path]);
+
+        $this->artisan('cv:status')
+            ->expectsOutputToContain('not readable')
+            ->doesntExpectOutputToContain('modified')
+            ->assertSuccessful();
+
+        unlink($path);
     }
 }

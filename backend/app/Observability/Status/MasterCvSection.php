@@ -19,14 +19,39 @@ class MasterCvSection implements StatusSection
 
     public function rows(): array
     {
-        $readable = $this->files->exists($this->path) && $this->files->isReadable($this->path);
+        $state = $this->state();
 
-        return [
+        $rows = [
             'path' => $this->path,
-            'readable' => $readable ? 'yes' : 'no',
-            'modified' => $readable
-                ? CarbonImmutable::createFromTimestamp($this->files->lastModified($this->path))->toIso8601String()
-                : 'unknown',
+            'state' => $state->value,
         ];
+
+        // A modification time is only a fact about a master CV when there is
+        // one. Reporting it for anything else dresses a missing file up as a
+        // present one.
+        if ($state === MasterCvState::Readable) {
+            $rows['modified'] = CarbonImmutable::createFromTimestamp(
+                $this->files->lastModified($this->path)
+            )->toIso8601String();
+        }
+
+        return $rows;
+    }
+
+    private function state(): MasterCvState
+    {
+        if (! $this->files->exists($this->path)) {
+            return MasterCvState::NotFound;
+        }
+
+        if (! $this->files->isFile($this->path)) {
+            return $this->files->isDirectory($this->path)
+                ? MasterCvState::Directory
+                : MasterCvState::NotRegularFile;
+        }
+
+        return $this->files->isReadable($this->path)
+            ? MasterCvState::Readable
+            : MasterCvState::NotReadable;
     }
 }

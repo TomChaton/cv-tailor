@@ -165,14 +165,31 @@ cv-tailor/
 
 ## Commands
 
-All of these run from the repository root. Copy `.env.example` to `.env` and
-fill it in first — Compose reads it for both its own interpolation and the
-containers' environment, so nothing starts without it. `APP_KEY` comes from
-`docker compose run --rm toolchain php artisan key:generate --show`.
+All of these run from the repository root.
+
+### First run, in this order
+
+1. `cp .env.example .env`, then set `MASTER_CV_HOST_PATH` to the absolute path
+   of a master CV that **already exists**. Compose reads `.env` for its own
+   interpolation as well as for the containers' environment, so nothing starts
+   without it, and the bind mount refuses to invent a missing source rather
+   than quietly presenting an empty directory as the CV.
+2. `docker compose run --rm toolchain composer install`. Nothing else that
+   calls artisan works before this: `vendor/` is not in the repository and the
+   toolchain image deliberately carries no source of its own.
+3. `docker compose run --rm toolchain php artisan key:generate --show`, and put
+   the result in `APP_KEY`.
+4. `docker compose up -d --build`.
+5. `docker compose exec app php artisan cv:owner` to create the account the
+   review UI is entered with, then
+   `docker compose exec app php artisan cv:token` for the extension's token.
+
+### Afterwards
 
 | Task | Command |
 | --- | --- |
 | Build and start the stack | `docker compose up -d --build` |
+| Rebuild after a dependency change | `docker compose build` |
 | Stop it | `docker compose down` |
 | Stop it and discard its data | `docker compose down -v` |
 | See what is running | `docker compose ps` |

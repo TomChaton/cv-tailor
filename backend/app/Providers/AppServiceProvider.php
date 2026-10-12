@@ -2,9 +2,11 @@
 
 namespace App\Providers;
 
+use App\Http\TrustedProxies;
 use App\Observability\Listeners\RecordWorkerHeartbeat;
 use App\Observability\Status\MasterCvSection;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Queue\Events\Looping;
 use Illuminate\Queue\Failed\CountableFailedJobProvider;
 use Illuminate\Support\Facades\Config;
@@ -42,5 +44,15 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Event::listen(Looping::class, RecordWorkerHeartbeat::class);
+
+        // Configured here rather than in bootstrap/app.php: the middleware
+        // callback there runs when the HTTP kernel is resolved, before the
+        // config repository is loaded. TrustProxies reads this static when it
+        // handles a request, so setting it on boot is in time.
+        $proxies = TrustedProxies::from(Config::string('cv.trusted_proxies'));
+
+        if ($proxies !== null) {
+            TrustProxies::at($proxies);
+        }
     }
 }
