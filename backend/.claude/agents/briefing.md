@@ -289,7 +289,53 @@ are cheaper.
 The provider sits behind an `LlmClient` interface (`submitBatch`, `pollBatch`,
 `fetchResults`, `complete`), with model names in configuration — one for
 generation, one for validation. Swapping providers is a new implementation,
-not a refactor. The default implementation targets Anthropic's API.
+not a refactor. The default implementation targets Anthropic's API through the
+official PHP SDK rather than hand-rolled HTTP, and is the only part of the
+application that names a provider type.
+
+- **`fetchResults` streams**, and a caller keys results by the custom ID the
+  result carries. A batch result set is unbounded in principle, so reading one
+  into memory is a trap waiting for a longer CV; and the provider returns
+  results in any order, so position-indexing is a bug that only shows up once a
+  batch holds more than one request.
+- **A malformed request is distinguishable from a provider-side failure** at
+  the client boundary — a bad request, a rate limit and a server error are
+  three separate failure classes, carried on both a thrown failure and an
+  `errored` batch result. The batch lifecycle retries one of those and must
+  never retry the other, and it cannot tell them apart if the client flattens
+  them.
+- **Retries are not the client's job.** Failures are reported, not retried. The
+  revision's `attempts` counter is the single place an attempt is counted, and
+  a retry buried in the client would hide attempts from the state machine that
+  counts them.
+- **Provider exceptions are translated into the application's own failure
+  type**, so no caller ever names an SDK class. The translation keeps the
+  provider's request ID, which is the only thing that lets a provider-side
+  problem be traced, and deliberately drops the provider's error body: an
+  error body can quote the request that caused it, and a chained exception is
+  reported with its whole chain.
+- **The batch API refuses some live-only request parameters**, so a request is
+  built only from the fields the pinned SDK accepts on both paths. Which fields
+  those are is read off the SDK after an upgrade, not assumed.
+
+#### Cost and rates
+
+- **Per-model cost rates live in configuration**, beside the model names. They
+  change without notice, and a rate compiled into the code misreports forever
+  with nothing in the system to say so. A model with no configured rate raises
+  rather than costing nothing.
+- **Cost is computed and returned in integer micros**, matching the
+  `cost_micros` column: money is never a float, and a rate is expressed per
+  million tokens so the arithmetic stays integer. The division is rounded up,
+  so a cost is never reported as less than it was.
+- **Cache-write and cache-read tokens are reported separately**, because the
+  two are priced differently and a revision that cannot tell them apart cannot
+  report what it cost. The configured cache-write rate is the one-hour-lifetime
+  rate, since that is the only lifetime this application asks for.
+- **The batch API's discount is configuration as well**, as a percentage of the
+  live rate rather than a multiplier, and a response knows whether it came from
+  a batch. A batch price applied to a live call, or the reverse, is wrong by a
+  factor the owner would never notice.
 
 ## Validation
 
@@ -379,6 +425,14 @@ It shows:
 - **No test calls a live model.** A `FakeLlmClient` returns recorded fixture
   responses. Fixture responses are recorded against the fictional master CV
   only.
+- **`LlmClient` is bound to the fake in the test environment**, so reaching a
+  live model from a test takes deliberately undoing that rather than
+  forgetting to fake. The provider's own SDK client refuses to be constructed
+  there at all, which catches a test that resolves the real implementation
+  instead of the interface.
+- **The fake emits the same log events as the real client**, from the same
+  class, so the event names cannot drift apart and observability is testable
+  without a provider.
 - The validators carry the weight of the fabrication guarantee, so they carry
   the weight of the tests: each check has cases that must pass and cases that
   must fail, built from the fictional CV.
