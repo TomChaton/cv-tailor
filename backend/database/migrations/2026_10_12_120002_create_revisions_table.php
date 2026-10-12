@@ -36,9 +36,12 @@ return new class extends Migration
             $table->text('error')->nullable();
             $table->timestamps();
 
-            // The pipeline asks for a posting's revisions in a given state far
-            // more often than it asks for either on its own.
+            // Both shapes are asked for, and the compound index cannot serve
+            // the second: the review UI wants one posting's revisions in a
+            // given state, while the batch submitter and `cv:status` ask about
+            // a state across every posting.
             $table->index(['posting_id', 'status']);
+            $table->index('status');
         });
     }
 
