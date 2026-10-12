@@ -58,8 +58,8 @@ reached over Tailscale; nothing in the application depends on that.
   service so Chromium stays out of the PHP image.
 - **Images must run on `amd64` without AVX2.** The reference host is an Intel
   Ivy Bridge machine. Images that require x86-64-v3 fail there with illegal
-  instruction errors, so every image is checked before it is adopted, and the
-  versions that passed are pinned rather than floating:
+  instruction errors, so every image is checked before it is adopted, and
+  versions are pinned rather than floating. The versions in use are
   **FrankenPHP 1.13.1 on PHP 8.5.11** for the application image, and
   **`gotenberg/gotenberg:8`** (Chromium 152) for PDF conversion. A version is
   changed deliberately, with the new one checked on that host first.
