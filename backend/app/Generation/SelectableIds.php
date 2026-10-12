@@ -4,19 +4,28 @@ namespace App\Generation;
 
 use App\MasterCv\ContentMarker;
 use App\MasterCv\ParsedMasterCv;
+use App\MasterCv\RoleKind;
 
 /**
- * Every master CV ID the model may name, and every headline title it may
- * choose from.
+ * Every master CV ID the model may name, by kind, and every headline title it
+ * may choose from.
  *
  * These become the enums in the output schema, so an ID that is not here
  * cannot come back at all: the provider refuses it rather than a validator
  * catching it afterwards.
  *
- * **One list, not one per field.** The guarantee an enum buys is that an ID
- * exists in the master CV. It is not that the ID belongs where it was used: a
- * real achievement filed under the wrong employer is a misattribution, and
- * catching that is the validators' work, not the schema's.
+ * **The lists are kept apart by kind** because the fields that take them are.
+ * A skill ID in `key_skills` and an employment role ID in `roles` are
+ * different questions, and one list of every ID would answer neither: it would
+ * accept a skill where a role belongs and leave the nonsense for a later step
+ * to notice. `all` exists for the fields where evidence legitimately spans
+ * every kind.
+ *
+ * An enum therefore guarantees that an ID **exists** in the master CV and, for
+ * a kind-scoped field, that it is **of the right kind**. It does not guarantee
+ * that the ID belongs where it was used: an achievement of one employer's
+ * filed under another is a misattribution, and catching that is the
+ * validators' work.
  *
  * **`TODO` content is left out entirely** rather than offered and flagged. The
  * author has said the fact is unknown, so there is nothing to offer, and
@@ -25,42 +34,80 @@ use App\MasterCv\ParsedMasterCv;
 final readonly class SelectableIds
 {
     /**
-     * @param  list<string>  $ids
+     * @param  list<string>  $all  Every ID below, in the order the CV gives them.
+     * @param  list<string>  $employmentRoles
+     * @param  list<string>  $independentProjects
+     * @param  list<string>  $items  Achievements and sub-bullets, of both.
+     * @param  list<string>  $skills
      * @param  list<string>  $headlineTitles
      */
     private function __construct(
-        public array $ids,
+        public array $all,
+        public array $employmentRoles,
+        public array $independentProjects,
+        public array $items,
+        public array $skills,
         public array $headlineTitles,
     ) {}
 
     public static function from(ParsedMasterCv $cv): self
     {
-        $ids = [];
+        $all = [];
+        $employmentRoles = [];
+        $independentProjects = [];
+        $items = [];
+        $skills = [];
 
         foreach ($cv->allRoles() as $role) {
             if ($role->id !== null) {
-                $ids[] = $role->id;
+                $all[] = $role->id;
+
+                if ($role->kind === RoleKind::Employment) {
+                    $employmentRoles[] = $role->id;
+                } else {
+                    $independentProjects[] = $role->id;
+                }
             }
 
             foreach ($role->allAchievements() as $achievement) {
                 if ($achievement->selectable && $achievement->id !== null) {
-                    $ids[] = $achievement->id;
+                    $all[] = $achievement->id;
+                    $items[] = $achievement->id;
                 }
             }
         }
 
         foreach ($cv->allSkills() as $skill) {
             if ($skill->selectable && $skill->id !== '') {
-                $ids[] = $skill->id;
+                $all[] = $skill->id;
+                $skills[] = $skill->id;
             }
         }
 
-        return new self(array_values(array_unique($ids)), self::titles($cv));
+        return new self(
+            all: array_values(array_unique($all)),
+            employmentRoles: array_values(array_unique($employmentRoles)),
+            independentProjects: array_values(array_unique($independentProjects)),
+            items: array_values(array_unique($items)),
+            skills: array_values(array_unique($skills)),
+            headlineTitles: self::titles($cv),
+        );
+    }
+
+    /**
+     * The things a role mode can be promoted on: an employment role or an
+     * independent project, and never a bullet or a skill.
+     *
+     * @return list<string>
+     */
+    public function promotable(): array
+    {
+        return [...$this->employmentRoles, ...$this->independentProjects];
     }
 
     public function count(): int
     {
-        return count($this->ids);
+        return count($this->all);
     }
 
     /**

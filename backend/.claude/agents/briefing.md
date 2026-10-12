@@ -352,15 +352,30 @@ ID fields are **enums built from the parsed master CV version** in the
 structured-output schema, so an invented ID is impossible rather than merely
 detectable. The schema is therefore generated per CV version.
 
-**Every ID field references one `$defs` enum.** A few hundred IDs repeated at
-each field that takes one would be most of the request. What the one list gives
-up was never worth having: an enum guarantees that an ID **exists** in the
-master CV, and not that it **belongs** where it was used. A real achievement
-filed under the wrong employer is a misattribution, and catching that is the
-validators' work. Each repeated object shape sits in `$defs` for the same
-reason. A `$ref` carries no sibling keywords — not every reader of JSON Schema
-takes them — so anything that needs saying about a referenced field is said in
-the prompt.
+**The ID enums are scoped to the kind each field takes**, and live in `$defs`
+so a few hundred IDs are listed once rather than at every field that takes one.
+Skills-index rows in `key_skills`, employment roles in `roles`, independent
+projects in `independent_projects`, bullets in a selected item, roles and
+projects in a promotion. Only evidence — `summary.supports`, an item's
+`supports`, a requirement's evidence — takes the broad list of every ID,
+because evidence legitimately spans every kind.
+
+So an enum guarantees that an ID **exists** in the master CV and, where the
+field is scoped, that it is **of the right kind**. It does not guarantee that
+the ID **belongs** where it was used: an achievement of one employer's filed
+under another is a misattribution within a kind, and catching that is the
+validators' work. One broad list would have been smaller and would have given
+up the kind as well, leaving three classes of type confusion — a skill offered
+where a role belongs, and the reverse — for a later step to maybe catch.
+
+**The two containers have shapes of their own** rather than sharing one, since
+the kind of ID is what differs between them. The duplication buys an
+impossibility: an independent project cannot be returned under an employer, so
+one of the deterministic checks is enforced a layer earlier.
+
+A `$ref` carries no sibling keywords — not every reader of JSON Schema takes
+them — so anything that needs saying about a referenced field is said in the
+prompt.
 
 **Content marked `TODO` is left out of the enums entirely**, rather than
 offered and flagged. The author has said the fact is unknown, so there is

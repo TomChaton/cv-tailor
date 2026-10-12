@@ -11,10 +11,10 @@ class OutputSchemaTest extends TestCase
 {
     use MasterCvFixtures;
 
-    public function test_the_id_enum_is_the_cvs_own_ids(): void
+    public function test_the_broad_id_enum_is_the_cvs_own_ids(): void
     {
         $this->assertSame(
-            SelectableIds::from($this->parseFixture())->ids,
+            SelectableIds::from($this->parseFixture())->all,
             $this->enum('master_cv_id'),
         );
     }
@@ -23,6 +23,60 @@ class OutputSchemaTest extends TestCase
     {
         $this->assertContains('larkspur-media.1', $this->enum('master_cv_id'));
         $this->assertNotContains('larkspur-media.2', $this->enum('master_cv_id'));
+        $this->assertNotContains('larkspur-media.2', $this->enum('item_id'));
+    }
+
+    /**
+     * An enum scoped to the kind of thing its field takes makes a malformed
+     * selection impossible rather than detectable.
+     */
+    public function test_each_id_enum_holds_only_its_own_kind(): void
+    {
+        $ids = SelectableIds::from($this->parseFixture());
+
+        $this->assertSame($ids->employmentRoles, $this->enum('employment_role_id'));
+        $this->assertSame($ids->independentProjects, $this->enum('independent_project_id'));
+        $this->assertSame($ids->items, $this->enum('item_id'));
+        $this->assertSame($ids->skills, $this->enum('skill_id'));
+        $this->assertSame($ids->promotable(), $this->enum('role_or_project_id'));
+    }
+
+    public function test_the_fields_that_take_one_kind_point_at_that_kind(): void
+    {
+        $this->assertSame(
+            ['$ref' => '#/$defs/skill_id'],
+            $this->subArray($this->properties(), 'key_skills', 'items'),
+        );
+        $this->assertSame(
+            ['$ref' => '#/$defs/employment_role_id'],
+            $this->subArray($this->defs(), 'role_selection', 'properties', 'id'),
+        );
+        $this->assertSame(
+            ['$ref' => '#/$defs/independent_project_id'],
+            $this->subArray($this->defs(), 'project_selection', 'properties', 'id'),
+        );
+        $this->assertSame(
+            ['$ref' => '#/$defs/item_id'],
+            $this->subArray($this->defs(), 'selected_item', 'properties', 'id'),
+        );
+        $this->assertSame(
+            ['$ref' => '#/$defs/role_or_project_id'],
+            $this->subArray($this->defs(), 'promotion', 'properties', 'id'),
+        );
+    }
+
+    /**
+     * Evidence legitimately spans every kind: a requirement may be met by a
+     * role, a bullet or a skills-index row, and a rewording may draw on all
+     * three.
+     */
+    public function test_evidence_takes_the_broad_enum(): void
+    {
+        $broad = ['$ref' => '#/$defs/master_cv_id'];
+
+        $this->assertSame($broad, $this->subArray($this->properties(), 'summary', 'properties', 'supports', 'items'));
+        $this->assertSame($broad, $this->subArray($this->defs(), 'selected_item', 'properties', 'supports', 'items'));
+        $this->assertSame($broad, $this->subArray($this->defs(), 'requirement', 'properties', 'evidence', 'items'));
     }
 
     public function test_the_headline_enum_is_the_titles_on_offer(): void
@@ -47,7 +101,9 @@ class OutputSchemaTest extends TestCase
         $encoded = json_encode($this->schema(), JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
 
         $this->assertSame(1, substr_count($encoded, '"master_cv_id":'));
-        $this->assertGreaterThan(5, substr_count($encoded, '"#/$defs/master_cv_id"'));
+        $this->assertSame(3, substr_count($encoded, '"#/$defs/master_cv_id"'));
+        $this->assertSame(1, substr_count($encoded, '"selected_item":'));
+        $this->assertSame(2, substr_count($encoded, '"#/$defs/selected_item"'));
     }
 
     public function test_every_repeated_shape_is_defined_once(): void
@@ -56,9 +112,15 @@ class OutputSchemaTest extends TestCase
             [
                 'requirement',
                 'role_selection',
+                'project_selection',
                 'selected_item',
                 'promotion',
                 'master_cv_id',
+                'employment_role_id',
+                'independent_project_id',
+                'item_id',
+                'skill_id',
+                'role_or_project_id',
                 'headline_title',
                 'role_mode',
             ],
@@ -126,14 +188,43 @@ class OutputSchemaTest extends TestCase
     }
 
     /**
-     * Independent projects are selected exactly as roles are, so they share
-     * the one definition rather than drifting from it.
+     * The two containers have shapes of their own rather than sharing one, so
+     * the container decides the kind of thing it may hold. A project returned
+     * under an employer claims commercial experience nobody paid for, and here
+     * it cannot be returned at all.
      */
-    public function test_independent_projects_share_the_role_shape(): void
+    public function test_a_project_cannot_be_returned_under_an_employer(): void
     {
         $this->assertSame(
+            ['$ref' => '#/$defs/role_selection'],
             $this->subArray($this->properties(), 'roles', 'items'),
+        );
+        $this->assertSame(
+            ['$ref' => '#/$defs/project_selection'],
             $this->subArray($this->properties(), 'independent_projects', 'items'),
+        );
+
+        $ids = SelectableIds::from($this->parseFixture());
+
+        $this->assertSame([], array_intersect($ids->employmentRoles, $ids->independentProjects));
+    }
+
+    /**
+     * The containers differ only in the kind of ID they take: selecting from a
+     * project is selecting, and a second way of describing it would be a
+     * second thing to keep in step.
+     */
+    public function test_the_two_containers_differ_only_in_the_id_they_take(): void
+    {
+        $role = $this->subArray($this->defs(), 'role_selection');
+        $project = $this->subArray($this->defs(), 'project_selection');
+
+        unset($role['properties'], $project['properties']);
+
+        $this->assertSame($role, $project);
+        $this->assertSame(
+            array_keys($this->subArray($this->defs(), 'role_selection', 'properties')),
+            array_keys($this->subArray($this->defs(), 'project_selection', 'properties')),
         );
     }
 

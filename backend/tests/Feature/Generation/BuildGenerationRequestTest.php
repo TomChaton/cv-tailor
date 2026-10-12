@@ -60,10 +60,13 @@ class BuildGenerationRequestTest extends TestCase
         $defs = $schema['$defs'] ?? null;
         $this->assertIsArray($defs);
 
-        $id = $defs['master_cv_id'] ?? null;
-        $this->assertIsArray($id);
+        $ids = SelectableIds::from($this->parseFixture());
 
-        $this->assertSame(SelectableIds::from($this->parseFixture())->ids, $id['enum'] ?? null);
+        foreach (['master_cv_id' => $ids->all, 'skill_id' => $ids->skills] as $def => $expected) {
+            $enum = $defs[$def] ?? null;
+            $this->assertIsArray($enum);
+            $this->assertSame($expected, $enum['enum'] ?? null);
+        }
     }
 
     public function test_it_asks_for_the_configured_room_to_answer_in(): void
