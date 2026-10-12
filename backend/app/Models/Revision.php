@@ -24,6 +24,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * that, since it is a rule about the value a column is moving away from.
  *
  * @property-read int $id
+ * @property-read int $posting_id
+ * @property-read int $master_cv_version_id
+ * @property-read string $prompt_version
  */
 #[ObservedBy([RevisionObserver::class])]
 #[Fillable([

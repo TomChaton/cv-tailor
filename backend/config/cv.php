@@ -56,6 +56,15 @@ return [
             ],
         ],
 
+        // The ceiling on one response. A generation response is a whole
+        // selection — every requirement the job states, every item chosen from
+        // every role — so it needs room. A response that reaches the ceiling
+        // comes back cut off mid-document and is reported as unusable rather
+        // than stored, so raising this is the answer to seeing that.
+        'max_output_tokens' => [
+            'generation' => (int) env('LLM_GENERATION_MAX_OUTPUT_TOKENS', 16000),
+        ],
+
         // The batch API bills a percentage of the live rate. A percentage of
         // an integer rather than a multiplier, because money is never a float.
         'batch_percent' => 50,

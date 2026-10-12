@@ -17,6 +17,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * better extraction can be re-run over postings captured long ago.
  *
  * @property-read int $id
+ * @property-read string $url
+ * @property-read string $source_site
+ * @property-read string|null $title
+ * @property-read string|null $company
+ * @property-read string|null $location
+ * @property-read string|null $salary_text
+ * @property-read string $extracted_text
  */
 #[Fillable([
     'url',

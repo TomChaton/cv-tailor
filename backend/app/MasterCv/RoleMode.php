@@ -17,4 +17,37 @@ enum RoleMode: string
     case Condensed = 'condensed';
 
     case Omitted = 'omitted';
+
+    /**
+     * @return list<string>
+     */
+    public static function values(): array
+    {
+        return array_column(self::cases(), 'value');
+    }
+
+    /**
+     * How much of a role this mode shows, as an order.
+     *
+     * The permitted direction of travel is the whole point of the enum, so the
+     * one place that knows which mode shows more is the enum itself.
+     */
+    public function rank(): int
+    {
+        return match ($this) {
+            self::Omitted => 0,
+            self::Condensed => 1,
+            self::Full => 2,
+        };
+    }
+
+    public function isPromotionOf(self $default): bool
+    {
+        return $this->rank() > $default->rank();
+    }
+
+    public function isDemotionOf(self $default): bool
+    {
+        return $this->rank() < $default->rank();
+    }
 }

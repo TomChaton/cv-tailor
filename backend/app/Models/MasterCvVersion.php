@@ -15,6 +15,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * deduplicated by `hash`, so an unchanged CV is not stored twice.
  *
  * @property-read int $id
+ * @property-read string $hash
+ * @property-read string $raw_content
  */
 #[Fillable(['hash', 'raw_content', 'parsed_json'])]
 class MasterCvVersion extends Model
