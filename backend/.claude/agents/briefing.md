@@ -143,6 +143,15 @@ numbers are dropped from both sides. The question this check asks is whether
 the index knows the technology at all. Whether a version is right for a role is
 a different question, asked of generated output by a check of its own.
 
+**That generosity is calibrated for a lint and must not be carried into a
+validator.** Matching is subset-based, so across a few hundred rows the union
+of words is large enough that a single-word term passes readily — including a
+word that appears in a row for a negative reason. That is the right trade for
+asking whether the index knows a technology at all, and the wrong trade for
+asking whether a reworded bullet may claim one: **the technology-to-role check
+on generated output must not reuse this vocabulary unexamined.** A loose
+vocabulary costs tidiness in a lint and costs the guarantee in a validator.
+
 Lint output names the line and the problem. It is written for the CV's author,
 not for a developer. The exit code is non-zero on failure, so generation and
 the scheduler can both rely on it.
@@ -488,10 +497,7 @@ It shows:
   a section and leaves the ones above it alone.
 - **Artisan command output is developer-facing** and does not live in a
   language catalogue. `lang/en_GB` is for words the owner reads in the review
-  UI. `cv:lint` is the edge case that proves the rule: its words are written
-  for the CV's author rather than for a developer, and they still belong in the
-  command, because the catalogue is the review UI's and a terminal is not a
-  surface it serves.
+  UI.
 
 ## Testing
 
