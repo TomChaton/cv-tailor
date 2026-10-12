@@ -95,11 +95,28 @@ the user keeping their CV in git.
 
 ## Data model
 
-- **`jobs`** — a captured posting: URL, source site, title, company, location,
-  salary text, raw HTML, extracted text, hidden-text flag, dedupe hash,
-  `status`, `current_revision_id`, `applied_revision_id`.
-- **`revisions`** — one tailored CV for a job.
-  - `job_id`, `parent_revision_id` (nullable — revisions form a tree, not a
+### Postings, not jobs
+
+The captured entity is a **`posting`** throughout the schema, the code, the log
+events and the context keys. Laravel's `database` queue driver owns the tables
+`jobs`, `job_batches` and `failed_jobs`, so a domain table called `jobs` would
+sit beside the framework's own and a `job_id` in a log line would be ambiguous.
+For the same reason the provider batch table is **`llm_batches`** with the
+context key `llm_batch_id`: `batches` reads as Laravel's `job_batches`.
+
+Laravel's own queue tables keep their framework names, and `pending_jobs` and
+`failed_jobs` in the worker heartbeat are queue jobs and are correct as they
+stand.
+
+**The word on screen stays "Jobs."** The owner browses job boards and thinks in
+jobs, so that is what `lang/en_GB` says. `postings` in code, "Jobs" on screen —
+deliberately, and not to be made to agree.
+
+- **`postings`** — a captured posting: URL, source site, title, company,
+  location, salary text, raw HTML, extracted text, hidden-text flag, dedupe
+  hash, `status`, `current_revision_id`, `applied_revision_id`.
+- **`revisions`** — one tailored CV for a posting.
+  - `posting_id`, `parent_revision_id` (nullable — revisions form a tree, not a
     list), `master_cv_version_id`.
   - `source`: `generated` | `regenerated` | `manual_edit`.
   - `instructions` (nullable) — the owner's steer for a regeneration.
@@ -109,7 +126,7 @@ the user keeping their CV in git.
   - `status`: `pending` | `submitted` | `generated` | `validated` | `ready` |
     `failed`; `attempts`; `error`.
 - **`master_cv_versions`** — as above.
-- **`batches`** — provider batch ID, state, submitted/ended times, request
+- **`llm_batches`** — provider batch ID, state, submitted/ended times, request
   count, linked revisions.
 
 ### Revisions are immutable once complete
@@ -122,17 +139,17 @@ trustworthy and diffs between revisions meaningful.
 is the one they actually sent. They are separate because the version that went
 to an employer is the one that matters later.
 
-### Job status
+### Posting status
 
-`captured → queued → ready → reviewed → applied`, plus `discarded`. A job is
-`ready` when its current revision is `ready`. The job list doubles as an
+`captured → queued → ready → reviewed → applied`, plus `discarded`. A posting
+is `ready` when its current revision is `ready`. The list doubles as an
 application tracker.
 
 ### Deduplication
 
 The same role appears on several boards. Capture computes a hash over the
 normalised title, company and description text; a capture matching an existing
-job returns that job rather than creating another. Agency reposts with the
+posting returns that posting rather than creating another. Agency reposts with the
 client anonymised will not match, and that is accepted.
 
 ## Generation
@@ -264,10 +281,15 @@ resolved model.
 
 ## Review UI
 
-Filament, for one user. It shows:
+Filament, for one user, mounted at **`/review`** on the same origin as the API.
+The owner signs in with an ordinary session login; `/` redirects there, because
+the review UI is the only thing this application serves to a browser.
 
-- Jobs, filterable by status and source, with the hidden-text warning.
-- Per job: the job description beside the current revision's PDF; the
+It shows:
+
+- Postings, filterable by status and source, with the hidden-text warning.
+  The screen calls them Jobs.
+- Per posting: the job description beside the current revision's PDF; the
   requirements checklist (met / partial / gap, linked to evidence); validation
   findings; the model's review notes.
 - The revision tree, with diffs between any two revisions at two levels: a
@@ -275,6 +297,36 @@ Filament, for one user. It shows:
   wording differs.
 - Actions: regenerate with instructions, edit (creating a child), generate now,
   mark applied (recording `applied_revision_id`), discard.
+
+## Observability
+
+- **Log lines are written through one class**, so `event` is never optional.
+  The Monolog formatter puts the event first and lifts context keys to the top
+  level, so one grep matches both an event and the object it concerns. A line
+  that arrives without an event is named `log.unnamed`: such a call is a bug,
+  and naming it makes it findable rather than letting it pass as ordinary.
+  Reported exceptions carry `exception.reported`, because an exception is a log
+  line like any other.
+- **The heartbeat timestamp lives in the cache**, under a key per process. It
+  has to outlive the process that wrote it and be readable from a different
+  container, and the cache table is already part of Laravel's own schema, so it
+  buys both without a table of its own. The cost is that clearing the cache
+  resets the report; that is cheap next to owning schema for it.
+  Stored without expiry: an entry that aged out would be indistinguishable from
+  a process that had never reported.
+- **Heartbeats are bucketed on the clock minute**, not on elapsed seconds. An
+  elapsed window skips a minute whenever the caller's own interval jitters just
+  under it, and a gap in a heartbeat reads as a stopped process.
+- **The worker's heartbeat hangs off the queue's `Looping` event**, which fires
+  whether or not there is work, so an idle worker still reports. The
+  scheduler's is a scheduled task, so it reports only while the scheduler is
+  actually running tasks.
+- **`cv:status` is a list of sections in `config/cv.php`.** Each is a class
+  with a heading and label-to-value rows. Anything with a state machine appends
+  a section and leaves the ones above it alone.
+- **Artisan command output is developer-facing** and does not live in a
+  language catalogue. `lang/en_GB` is for words the owner reads in the review
+  UI.
 
 ## Testing
 
@@ -287,10 +339,47 @@ Filament, for one user. It shows:
 - The parser and linter are tested against the fictional CV and against
   deliberately broken variants.
 
+## Commands
+
+Run from the repository root.
+
+The development toolchain is a Compose service, `toolchain`, built from the
+same Dockerfile as the application but carrying no source: it bind-mounts the
+checkout, so an edit needs no rebuild. It sits in the `tools` profile, so
+`docker compose up` never starts it.
+
+| Task | Command |
+| --- | --- |
+| Install dependencies | `docker compose run --rm toolchain composer install` |
+| Run the tests | `docker compose run --rm toolchain php artisan test` |
+| Format | `docker compose run --rm toolchain vendor/bin/pint` |
+| Check formatting only | `docker compose run --rm toolchain vendor/bin/pint --test` |
+| Static analysis | `docker compose run --rm toolchain vendor/bin/phpstan analyse --memory-limit=1G` |
+
+These run against the **running** stack and so use `exec app`, not the
+toolchain:
+
+| Task | Command |
+| --- | --- |
+| What the stack is doing | `docker compose exec app php artisan cv:status` |
+| Create or update the owner | `docker compose exec app php artisan cv:owner` |
+| Issue an extension token | `docker compose exec app php artisan cv:token` |
+
+`cv:owner` prompts, and takes `--name`, `--email` and `--password` when a
+script needs it. `cv:token` prints the token once; only its hash is stored.
+
+### Two things that are easy to get wrong
+
+- **The test suite supplies its own environment** and is handed no `.env`, so a
+  result never depends on how a particular machine is configured. Test values
+  belong in `phpunit.xml`.
+- **Configuration is never cached.** It arrives as container environment
+  variables, and a cached config file would freeze whatever happened to be set
+  when the image was built.
+
 ## Briefing gaps
 
-- **Commands.** The containerised commands for running tests, formatting,
-  static analysis, `cv:lint`, `cv:status`, creating the owner account and
-  issuing an extension token. To be added by the scaffold.
+- **`cv:lint`.** The containerised command for linting a master CV, to be added
+  with the linter.
 - **Fictional master CV fixture.** The fixture exists and exercises every
   format feature; record its path and what each part of it is for.

@@ -58,12 +58,22 @@ reached over Tailscale; nothing in the application depends on that.
   service so Chromium stays out of the PHP image.
 - **Images must run on `amd64` without AVX2.** The reference host is an Intel
   Ivy Bridge machine. Images that require x86-64-v3 fail there with illegal
-  instruction errors, so every image is checked before it is adopted.
+  instruction errors, so every image is checked before it is adopted, and
+  versions are pinned rather than floating. The versions in use are
+  **FrankenPHP 1.13.1 on PHP 8.5.11** for the application image, and
+  **`gotenberg/gotenberg:8`** (Chromium 152) for PDF conversion. A version is
+  changed deliberately, with the new one checked on that host first.
 - **State lives in named volumes** — the SQLite database and generated PDFs —
   never bind mounts. On macOS, bind mounts go through the Docker VM's file
   sharing, which is slow and does not give SQLite reliable locking.
 - **The master CV is bind-mounted read-only.** It is authored on the host, and
   the application only ever reads it.
+- **The master CV lives under the owner's home directory.** That is where a
+  person keeps a document they edit by hand, and it is the one place a
+  VM-backed Docker shares by default: a bind mount whose source sits outside
+  what the VM shares is reported as missing, however plainly it exists on the
+  host. So the configured path is a home-relative one, and `.env.example`
+  defaults to it.
 
 ### Routing is a deployment overlay
 
@@ -126,15 +136,15 @@ The only outbound network traffic is to the configured LLM provider's API.
 ## Observability
 
 - **Every log line is structured JSON** with an `event` key naming what
-  happened (`job.captured`, `batch.submitted`, `revision.validated`) and
-  context keys for the objects involved (`job_id`, `revision_id`, `batch_id`).
-  Event names are part of the interface: issues name them and reviews check
-  them, so they are not renamed casually.
+  happened (`posting.captured`, `batch.submitted`, `revision.validated`) and
+  context keys for the objects involved (`posting_id`, `revision_id`,
+  `llm_batch_id`). Event names are part of the interface: issues name them and
+  reviews check them, so they are not renamed casually.
 - **Long-running processes emit throttled heartbeats** (`worker.heartbeat`,
   `scheduler.heartbeat`) so a silent process is distinguishable from an idle
   one.
 - **`php artisan cv:status` is the first place to look.** It reports counts by
-  job and revision state, open batches and their age, the most recent
+  posting and revision state, open batches and their age, the most recent
   heartbeat from each process, the active master CV version, and recent
   failures. Anything with a state machine appears there. Documents describe how
   to look; this command shows what is.
@@ -159,10 +169,50 @@ cv-tailor/
 └── extension/               Chrome extension (own briefing)
 ```
 
+## Commands
+
+All of these run from the repository root.
+
+### First run, in this order
+
+1. `cp .env.example .env`, then point `MASTER_CV_HOST_PATH` at a master CV
+   that **already exists, under your home directory** — that is what the Docker
+   VM shares, and a path outside it fails as a missing source even when it is
+   there on the host. The default uses `${HOME}`, which Compose interpolates
+   from within `.env`. Compose reads `.env` for its own interpolation as well
+   as for the containers' environment, so nothing starts without it, and the
+   bind mount refuses to invent a missing source rather than quietly presenting
+   an empty directory as the CV.
+2. `docker compose run --rm toolchain composer install`. Nothing else that
+   calls artisan works before this: `vendor/` is not in the repository and the
+   toolchain image deliberately carries no source of its own.
+3. `docker compose run --rm toolchain php artisan key:generate --show`, and put
+   the result in `APP_KEY`.
+4. `docker compose up -d --build`.
+5. `docker compose exec app php artisan cv:owner` to create the account the
+   review UI is entered with, then
+   `docker compose exec app php artisan cv:token` for the extension's token.
+
+### Afterwards
+
+| Task | Command |
+| --- | --- |
+| Build and start the stack | `docker compose up -d --build` |
+| Rebuild after a dependency change | `docker compose build` |
+| Stop it | `docker compose down` |
+| Stop it and discard its data | `docker compose down -v` |
+| See what is running | `docker compose ps` |
+| What the stack is doing | `docker compose exec app php artisan cv:status` |
+| Follow a service's logs | `docker compose logs -f app` (or `worker`, `scheduler`, `gotenberg`) |
+| Find an event | `docker compose logs worker \| grep '"event":"worker.heartbeat"'` |
+| A shell in the application | `docker compose exec app bash` |
+
+`toolchain` and `node` carry the development toolchains. They sit in Compose's
+`tools` profile, so `docker compose up` never starts them and
+`docker compose run` starts them on demand. Their commands are in the backend
+and extension briefings.
+
 ## Briefing gaps
 
-- **Commands.** The Compose commands to start, stop and inspect the stack, run
-  `cv:status`, and tail each service's logs. To be added when the scaffold
-  exists.
 - **Tailscale overlay.** The exact sidecar configuration and the steps to
   enable it, once built.

@@ -1,0 +1,28 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    paths:
+        - app
+        - config
+        - database
+        - routes
+        - tests
+
+    level: max
+
+    checkMissingCallableSignature: true
+
+    # Much of the framework's typing lives in docblocks rather than signatures.
+    # Treating it as certain turns a defensive check against a misconfigured
+    # container binding into an error, which is the wrong way round.
+    treatPhpDocTypesAsCertain: false
+
+    ignoreErrors:
+        # `$this->artisan()` is declared as returning an exit code as well as a
+        # pending command, so every assertion chained onto it reads as a method
+        # call on an int.
+        -
+            identifier: method.nonObject
+            message: '#Illuminate\\Testing\\PendingCommand\|int\.$#'
+            path: tests/*

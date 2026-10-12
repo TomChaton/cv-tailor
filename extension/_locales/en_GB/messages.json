@@ -1,0 +1,8 @@
+{
+  "extensionName": {
+    "message": "cv-tailor"
+  },
+  "extensionDescription": {
+    "message": "Capture a job description and send it to cv-tailor."
+  }
+}

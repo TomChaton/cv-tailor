@@ -71,9 +71,25 @@ only thing that should routinely require a new build.
   job pages. When a site's markup changes, the fix starts with a new fixture.
 - Fixtures are trimmed to what extraction needs and contain no personal data.
 
+## Commands
+
+Run from the repository root. The Node toolchain is a Compose service, `node`,
+in the `tools` profile, so `docker compose up` never starts it. Nothing is
+installed on the host.
+
+| Task | Command |
+| --- | --- |
+| Install dependencies | `docker compose run --rm node npm ci` |
+| Build the unpacked extension | `docker compose run --rm node npm run build` |
+| Run the tests | `docker compose run --rm node npm test` |
+| Lint and type-check | `docker compose run --rm node npm run lint` |
+
+The build writes `extension/dist`. Load it with `chrome://extensions` →
+Developer mode → Load unpacked → `extension/dist`.
+
 ## Briefing gaps
 
-- **Commands.** The containerised commands to install dependencies, build,
-  test, lint and regenerate the API client. To be added by the scaffold.
+- **The API client.** The command to regenerate it from the backend's OpenAPI
+  document, to be added with the API.
 - **Supported sites.** The list of site extractors and their fixture
   locations, once the first are built.
