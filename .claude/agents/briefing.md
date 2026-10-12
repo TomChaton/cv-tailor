@@ -68,6 +68,12 @@ reached over Tailscale; nothing in the application depends on that.
   sharing, which is slow and does not give SQLite reliable locking.
 - **The master CV is bind-mounted read-only.** It is authored on the host, and
   the application only ever reads it.
+- **The master CV lives under the owner's home directory.** That is where a
+  person keeps a document they edit by hand, and it is the one place a
+  VM-backed Docker shares by default: a bind mount whose source sits outside
+  what the VM shares is reported as missing, however plainly it exists on the
+  host. So the configured path is a home-relative one, and `.env.example`
+  defaults to it.
 
 ### Routing is a deployment overlay
 
@@ -169,11 +175,14 @@ All of these run from the repository root.
 
 ### First run, in this order
 
-1. `cp .env.example .env`, then set `MASTER_CV_HOST_PATH` to the absolute path
-   of a master CV that **already exists**. Compose reads `.env` for its own
-   interpolation as well as for the containers' environment, so nothing starts
-   without it, and the bind mount refuses to invent a missing source rather
-   than quietly presenting an empty directory as the CV.
+1. `cp .env.example .env`, then point `MASTER_CV_HOST_PATH` at a master CV
+   that **already exists, under your home directory** — that is what the Docker
+   VM shares, and a path outside it fails as a missing source even when it is
+   there on the host. The default uses `${HOME}`, which Compose interpolates
+   from within `.env`. Compose reads `.env` for its own interpolation as well
+   as for the containers' environment, so nothing starts without it, and the
+   bind mount refuses to invent a missing source rather than quietly presenting
+   an empty directory as the CV.
 2. `docker compose run --rm toolchain composer install`. Nothing else that
    calls artisan works before this: `vendor/` is not in the repository and the
    toolchain image deliberately carries no source of its own.
