@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
-# The reference host is an Intel Ivy Bridge Mac, so the base images are pinned
-# to versions confirmed to run without AVX2 (x86-64-v3) instructions.
+# Pinned because the reference host, an Intel Ivy Bridge Mac, cannot run
+# x86-64-v3 (AVX2) instructions.
 ARG FRANKENPHP_VERSION=1.13.1
 ARG PHP_VERSION=8.5.11
 
