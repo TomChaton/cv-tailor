@@ -2,7 +2,11 @@
 
 namespace Tests\Feature\Console;
 
+use App\Models\Posting;
+use App\Models\Revision;
 use App\Observability\HeartbeatStore;
+use App\Postings\PostingStatus;
+use App\Revisions\RevisionStatus;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -111,5 +115,40 @@ class CvStatusCommandTest extends TestCase
             ->assertSuccessful();
 
         unlink($path);
+    }
+
+    /**
+     * An empty state has to be visible rather than absent: a status missing
+     * from the report cannot be told apart from one that has been renamed.
+     */
+    public function test_it_reports_every_posting_and_revision_status_on_an_empty_database(): void
+    {
+        $command = $this->artisan('cv:status')
+            ->expectsOutputToContain('Postings')
+            ->expectsOutputToContain('Revisions');
+
+        // `ready` is both a posting status and a revision status, and one
+        // expectation per distinct word is all this asserts.
+        $statuses = array_unique([...PostingStatus::values(), ...RevisionStatus::values()]);
+
+        foreach ($statuses as $status) {
+            $command->expectsOutputToContain($status);
+        }
+
+        $command->assertSuccessful();
+    }
+
+    public function test_the_new_sections_leave_the_ones_above_them_alone(): void
+    {
+        Posting::factory()->create();
+        Revision::factory()->create();
+
+        $this->artisan('cv:status')
+            ->expectsOutputToContain('Processes')
+            ->expectsOutputToContain('Queue')
+            ->expectsOutputToContain('Master CV')
+            ->expectsOutputToContain('Postings')
+            ->expectsOutputToContain('Revisions')
+            ->assertSuccessful();
     }
 }
