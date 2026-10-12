@@ -135,15 +135,61 @@ A revision that has reached `ready` or `failed` is never updated. Editing or
 regenerating creates a child revision. This is what makes the history
 trustworthy and diffs between revisions meaningful.
 
+**The rule is enforced in the model, not the schema.** No constraint can
+express it: it is a rule about the value a column is moving *away* from, so the
+guard reads the stored status rather than the one being written. A revision may
+therefore be moved *into* `ready` or `failed`, and never out again, and a
+complete revision may still gain children. The guard lives in an observer
+rather than in the model body, because it needs the event logger and observers
+are resolved from the container.
+
+**The refusal raises.** A write dropped in silence leaves its caller believing
+it changed history, and a history nobody can trust is worse than one that is
+missing. It is logged as well as raised, under `revision.mutation_rejected`.
+
+Eloquent fires no model event for a query-builder update, so the guarantee
+covers writes that go through the model. Revisions are written by this
+application's own actions, and those go through the model.
+
 `current_revision_id` is the one the owner is looking at; `applied_revision_id`
 is the one they actually sent. They are separate because the version that went
 to an employer is the one that matters later.
+
+### A posting carries no foreign key to its revisions
+
+`postings.current_revision_id` and `postings.applied_revision_id` are plain
+nullable integer columns, indexed, with no constraint behind them. The
+reference is circular — a posting points at a revision that points back at the
+posting — so one of the two tables has to be created before its target exists,
+and SQLite cannot add a constraint to a table afterwards. Nothing here may
+depend on SQLite-specific SQL, which rules out the driver-specific escapes, so
+the relationship is enforced in code instead.
+
+### Cost and token usage
+
+**Cost is an integer in micros.** Money is never a float, and millionths of a
+currency unit are fine enough for a per-revision LLM charge.
+
+**Token usage is four named columns** — input, output, cache read, cache write
+— rather than one JSON blob. A cost report over them is then a sum rather than
+a walk over JSON, and a column that is summed is a column worth naming.
 
 ### Posting status
 
 `captured → queued → ready → reviewed → applied`, plus `discarded`. A posting
 is `ready` when its current revision is `ready`. The list doubles as an
 application tracker.
+
+**The status is stored even though `ready` could be derived** from the current
+revision. `reviewed` and `applied` are things the owner did, which no revision
+knows about, and the column is what makes the list an application tracker
+rather than a view of the pipeline. The cost is that `ready` is denormalised
+and has to be kept in step with the current revision.
+
+Both posting status and revision status are PHP enums, cast on the model, so a
+state that exists only in a string literal cannot be invented. Each reports a
+count per state in `cv:status`, including the states nothing is in: a state
+absent from the report cannot be told apart from one that has been renamed.
 
 ### Deduplication
 

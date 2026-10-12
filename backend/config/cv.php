@@ -1,8 +1,10 @@
 <?php
 
 use App\Observability\Status\MasterCvSection;
+use App\Observability\Status\PostingsSection;
 use App\Observability\Status\ProcessesSection;
 use App\Observability\Status\QueueSection;
+use App\Observability\Status\RevisionsSection;
 
 return [
 
@@ -27,6 +29,8 @@ return [
         ProcessesSection::class,
         QueueSection::class,
         MasterCvSection::class,
+        PostingsSection::class,
+        RevisionsSection::class,
     ],
 
 ];
