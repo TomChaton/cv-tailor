@@ -8,11 +8,15 @@ use App\Observability\HeartbeatStore;
 use App\Postings\PostingStatus;
 use App\Revisions\RevisionStatus;
 use Carbon\CarbonImmutable;
+use Illuminate\Console\Command;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
+use Tests\Concerns\MasterCvFixtures;
 use Tests\TestCase;
 
 class CvStatusCommandTest extends TestCase
 {
+    use MasterCvFixtures;
     use RefreshDatabase;
 
     public function test_it_says_plainly_when_a_process_has_never_reported(): void
@@ -115,6 +119,28 @@ class CvStatusCommandTest extends TestCase
             ->assertSuccessful();
 
         unlink($path);
+    }
+
+    public function test_it_reports_the_version_the_master_cv_parses_to_and_that_it_passes_lint(): void
+    {
+        config(['cv.master_cv.path' => $this->fixturePath()]);
+
+        $this->assertSame(Command::SUCCESS, Artisan::call('cv:status'));
+
+        $output = Artisan::output();
+
+        $this->assertStringContainsString('version', $output);
+        $this->assertStringContainsString($this->parseFixture()->hash(), $output);
+        $this->assertStringContainsString('passing', $output);
+    }
+
+    public function test_it_reports_a_master_cv_that_would_be_refused(): void
+    {
+        config(['cv.master_cv.path' => $this->fixturePath('master-cv/broken-missing-id.md')]);
+
+        $this->assertSame(Command::SUCCESS, Artisan::call('cv:status'));
+
+        $this->assertStringContainsString('1 problem: run php artisan cv:lint', Artisan::output());
     }
 
     /**
