@@ -1,0 +1,101 @@
+name: cv-tailor
+
+# app, worker and scheduler are the same image with different commands, so the
+# three roles can never drift apart.
+x-app: &app
+  build:
+    context: ./backend
+    target: app
+  image: cv-tailor-app:local
+  env_file: .env
+  restart: unless-stopped
+  volumes:
+    - database:/var/lib/cv-tailor/db
+    - pdfs:/var/lib/cv-tailor/pdfs
+    - ${MASTER_CV_HOST_PATH:?set MASTER_CV_HOST_PATH in .env}:/var/lib/cv-tailor/master-cv.md:ro
+
+services:
+  app:
+    <<: *app
+    environment:
+      # Only this role migrates, so three containers starting together cannot
+      # race for the SQLite write lock.
+      CV_RUN_MIGRATIONS: 'true'
+    ports:
+      - '127.0.0.1:${APP_PORT:-8080}:8080'
+    depends_on:
+      gotenberg:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:8080/up']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  worker:
+    <<: *app
+    command: ['php', 'artisan', 'queue:work', '--queue=default', '--tries=3', '--timeout=600']
+    depends_on:
+      app:
+        condition: service_healthy
+    # The base image probes the web server, which this role does not run. A
+    # worker's liveness is its heartbeat: see `php artisan cv:status`.
+    healthcheck:
+      disable: true
+
+  scheduler:
+    <<: *app
+    command: ['php', 'artisan', 'schedule:work']
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    restart: unless-stopped
+    # No published ports: only the app talks to it, over the Compose network.
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:3000/health']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  # Tests, formatting and static analysis. Bind-mounts the checkout so an edit
+  # needs no rebuild. In the `tools` profile, so `docker compose up` ignores it.
+  toolchain:
+    build:
+      context: ./backend
+      target: toolchain
+    image: cv-tailor-toolchain:local
+    profiles: ['tools']
+    # No env_file: the test suite supplies its own environment, so a result
+    # here never depends on how this machine is configured. The file is mounted
+    # all the same because artisan reads one from the project root.
+    working_dir: /app
+    volumes:
+      - ./backend:/app
+      - ./.env:/app/.env:ro
+      - composer-cache:/composer-cache
+    environment:
+      COMPOSER_CACHE_DIR: /composer-cache
+
+  # The extension's Node toolchain. Also in the `tools` profile.
+  node:
+    image: node:24.21.0-alpine3.24
+    profiles: ['tools']
+    working_dir: /app
+    volumes:
+      - ./extension:/app
+      - npm-cache:/npm-cache
+    environment:
+      npm_config_cache: /npm-cache
+
+volumes:
+  database:
+  pdfs:
+  composer-cache:
+  npm-cache:

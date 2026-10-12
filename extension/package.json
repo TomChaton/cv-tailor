@@ -1,0 +1,20 @@
+{
+  "name": "cv-tailor-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "cv-tailor's Chrome extension: capture a job description and send it to the backend.",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "vitest run",
+    "lint": "eslint . && tsc --noEmit"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.12.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.71.1",
+    "vitest": "^5.0.4"
+  }
+}
