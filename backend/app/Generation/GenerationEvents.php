@@ -22,6 +22,34 @@ final readonly class GenerationEvents
     public function __construct(private EventLogger $log) {}
 
     /**
+     * A posting has a revision waiting to be generated.
+     */
+    public function queued(Revision $revision): void
+    {
+        $this->log->log('posting.queued', [
+            'posting_id' => $revision->posting_id,
+            'revision_id' => $revision->id,
+            'master_cv_version_id' => $revision->master_cv_version_id,
+        ]);
+    }
+
+    /**
+     * An alarm: the system is waiting on the owner, and a silent wait is
+     * indistinguishable from a system that has stopped.
+     *
+     * Counts, not findings. A finding quotes the CV. A null count of problems
+     * means the CV never reached its lint, which is what an unreadable file
+     * looks like from here.
+     */
+    public function queueBlocked(int $waiting, ?int $problems): void
+    {
+        $this->log->warning('queue.blocked', [
+            'postings_waiting' => $waiting,
+            'problems' => $problems,
+        ]);
+    }
+
+    /**
      * The sizes are the point. A master CV that arrives truncated is invisible
      * in the output and obvious here.
      */
