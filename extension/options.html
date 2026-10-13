@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        font: 14px/1.6 system-ui, sans-serif;
+        margin: 0 auto;
+        max-width: 28rem;
+        padding: 2rem 1.5rem;
+      }
+
+      label {
+        display: block;
+        font-weight: 600;
+      }
+
+      input {
+        box-sizing: border-box;
+        font: inherit;
+        margin: 0.25rem 0 1rem;
+        padding: 0.4rem 0.5rem;
+        width: 100%;
+      }
+
+      button {
+        font: inherit;
+        padding: 0.4rem 1rem;
+      }
+
+      #outcome {
+        margin: 1rem 0 0;
+      }
+    </style>
+  </head>
+  <body>
+    <form id="settings">
+      <label id="base-url-label" for="base-url"></label>
+      <input id="base-url" name="base-url" type="url" autocomplete="off" spellcheck="false" />
+
+      <label id="token-label" for="token"></label>
+      <input id="token" name="token" type="password" autocomplete="off" spellcheck="false" />
+
+      <button id="save" type="submit"></button>
+    </form>
+    <p id="outcome"></p>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>
