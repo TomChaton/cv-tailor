@@ -102,6 +102,23 @@ class MasterCvPageTest extends TestCase
         }
     }
 
+    /**
+     * The button is beside the problem, so the page says nothing about how to
+     * fix it. `cv:lint` is where the command belongs, because a terminal has
+     * no button.
+     */
+    public function test_a_problem_with_a_button_beside_it_names_no_command(): void
+    {
+        $this->signIn();
+        config(['cv.master_cv.path' => $this->fixturePath('master-cv/broken-missing-id.md')]);
+
+        $this->get(MasterCv::getUrl())
+            ->assertSuccessful()
+            ->assertSee('This achievement has no ID.')
+            ->assertSee(__('master-cv.actions.add_ids'))
+            ->assertDontSee('artisan');
+    }
+
     public function test_notes_are_shown_apart_from_the_problems(): void
     {
         $this->signIn();

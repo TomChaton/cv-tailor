@@ -10,6 +10,7 @@ use App\MasterCv\Lint\Checks\TechStackIsInSkillsIndex;
 use App\MasterCv\Lint\Finding;
 use App\MasterCv\Lint\LintReport;
 use App\MasterCv\Lint\MasterCvLinter;
+use App\MasterCv\Lint\Remedy;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Tests\Concerns\MasterCvFixtures;
@@ -152,6 +153,39 @@ class MasterCvLinterTest extends TestCase
         ));
 
         $this->assertSame(['ids' => 2], $this->linter()->lint($cv)->problemsByCheck());
+    }
+
+    /**
+     * A finding says what is wrong; what to do about it differs between a
+     * terminal and a screen with a button, so the report names the remedy and
+     * leaves the wording to whoever is telling the author.
+     */
+    public function test_a_missing_id_names_the_remedy_and_does_not_spell_it_out(): void
+    {
+        $problem = $this->lint('master-cv/broken-missing-id.md')->problems()[0];
+
+        $this->assertSame('This achievement has no ID.', $problem->message);
+        $this->assertSame(Remedy::AddMissingIds, $problem->remedy);
+    }
+
+    public function test_a_remedy_is_named_once_however_many_findings_call_for_it(): void
+    {
+        $report = $this->linter()->lint($this->parser()->parse(str_replace(
+            [' {#wrenbury-freight.1}', ' {#wrenbury-freight.2}'],
+            '',
+            $this->fixture('master-cv/minimal.md'),
+        )));
+
+        $this->assertCount(2, $report->problems());
+        $this->assertSame([Remedy::AddMissingIds], $report->remedies());
+    }
+
+    public function test_a_problem_nothing_can_fix_for_the_author_names_no_remedy(): void
+    {
+        $report = $this->lint('master-cv/broken-duplicate-id.md');
+
+        $this->assertNull($report->problems()[0]->remedy);
+        $this->assertSame([], $report->remedies());
     }
 
     private function lint(string $fixture = 'master-cv.md'): LintReport

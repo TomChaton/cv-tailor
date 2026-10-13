@@ -194,6 +194,15 @@ Lint output names the line and the problem. It is written for the CV's author,
 not for a developer. The exit code is non-zero on failure, so generation and
 the scheduler can both rely on it.
 
+**A finding states the problem and never the remedy.** The same words are read
+in a terminal and in the review UI, and what to do about a problem differs
+between them: a screen with a button for the fix does not want advice on
+running a command instead, and a message that carries the advice anyway puts it
+on both. So a problem with a known fix **names** the remedy, each surface
+decides what it has to say about it, and a remedy is offered once however many
+findings call for it. `cv:lint` owns the command's wording, because a terminal
+has no button; the master CV page, which has one, says nothing.
+
 ### Bootstrapping the IDs
 
 `php artisan cv:id <source> [destination]` writes the IDs a CV is missing and
@@ -1136,7 +1145,8 @@ and the two actions worth having.
 - **Lint's own findings are the exception to the catalogue rule.** They are
   written for the CV's author and come from the linter; the page prints them as
   it is given them, and supplies only the heading of the check that raised each
-  one.
+  one. It prints no remedy: a finding names what fixes it and this page's
+  answer to that is a button, not a sentence.
 
 ## Observability
 

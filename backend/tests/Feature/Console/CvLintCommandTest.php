@@ -41,8 +41,23 @@ class CvLintCommandTest extends TestCase
 
         $this->assertSame(Command::FAILURE, $exitCode);
         $this->assertStringContainsString('line 42', $output);
-        $this->assertStringContainsString('This achievement has no ID', $output);
+        $this->assertStringContainsString('This achievement has no ID.', $output);
         $this->assertStringContainsString('1 problem to fix', $output);
+    }
+
+    /**
+     * A terminal has no button, so the command is the only way to offer the
+     * fix here. The finding itself says nothing about it: see the review UI's
+     * master CV page, which has the button and stays quiet.
+     */
+    public function test_it_offers_the_command_that_writes_the_missing_ids(): void
+    {
+        Artisan::call('cv:lint', ['path' => $this->fixturePath('master-cv/broken-missing-id.md')]);
+
+        $this->assertStringContainsString(
+            'Run "php artisan cv:id" to write the IDs that are missing.',
+            Artisan::output(),
+        );
     }
 
     /**

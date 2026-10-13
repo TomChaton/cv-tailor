@@ -42,6 +42,27 @@ final readonly class LintReport
     }
 
     /**
+     * The remedies the problems name, each once, in the order they appear.
+     *
+     * A surface offers a remedy once however many findings call for it: a CV
+     * missing forty IDs wants one answer, not forty.
+     *
+     * @return list<Remedy>
+     */
+    public function remedies(): array
+    {
+        $remedies = [];
+
+        foreach ($this->problems() as $problem) {
+            if ($problem->remedy !== null && ! in_array($problem->remedy, $remedies, true)) {
+                $remedies[] = $problem->remedy;
+            }
+        }
+
+        return $remedies;
+    }
+
+    /**
      * Problem counts per check, for the log event. The findings' text quotes
      * the CV and so never goes to a log; the counts say as much as a log line
      * is allowed to.

@@ -5,6 +5,7 @@ namespace App\MasterCv\Lint\Checks;
 use App\MasterCv\Achievement;
 use App\MasterCv\Lint\Check;
 use App\MasterCv\Lint\Finding;
+use App\MasterCv\Lint\Remedy;
 use App\MasterCv\ParsedMasterCv;
 use App\MasterCv\Role;
 use App\MasterCv\RoleKind;
@@ -99,10 +100,12 @@ class IdsArePresentAndUnique implements Check
     private function unit(?string $id, int $line, string $kind, ?string $parentId, array &$seen): array
     {
         if ($id === null) {
-            return [Finding::problem($this->name(), $line, sprintf(
-                'This %s has no ID. Run "php artisan cv:id" to add the ones that are missing.',
-                $kind,
-            ))];
+            return [Finding::problem(
+                $this->name(),
+                $line,
+                sprintf('This %s has no ID.', $kind),
+                Remedy::AddMissingIds,
+            )];
         }
 
         $findings = [];
