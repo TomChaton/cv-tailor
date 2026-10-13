@@ -67,11 +67,25 @@ as the starter template for other users.
   under anything else it is a selectable achievement. Labelled metadata
   bullets (`- **Dates:** …`) are identified by the colon sitting *inside* the
   bold markers, which is what separates them from an achievement opening with
-  a bold lead-in. **An unrecognised block label is reported and never
+  a bold lead-in. That colon does not decide alone: **an ID is what
+  distinguishes a selectable unit from a metadata field.** A field never
+  carries one and a unit always does, so a labelled bullet with a trailing
+  `{#id}` is an achievement whose text opens with a bold lead-in — ordinary CV
+  writing — and not a field whose name happens to be a sentence. On the colon
+  alone, a unit the author had identified is filed as a field and lost, which
+  is the one kind of loss nothing downstream can detect: nothing downstream
+  knows it existed. **An unrecognised block label is reported and never
   refused** — its bullets are achievements, which is almost always what was
   meant, and a format that rejects a heading its author invented is a format
   its author stops maintaining. The same applies to metadata keys and to front
   matter keys the parser does not know.
+- **A bullet's continuation lines are joined onto it before its ID is split
+  off**, so a bullet the author wrapped reads as an unwrapped one does. A
+  wrapped bullet carries its `{#id}` at the end of its last line, and
+  splitting line by line leaves the ID buried in the text and the unit with
+  none. A lint then reports a missing ID against the line the bullet starts on
+  while the ID sits further down, which sends the author to edit a line that
+  is already right — worse than saying nothing.
 - **The skills index has two row forms** — a two-column table of skill and
   where it was used, and a plain bullet list — and both are supported, because
   both are what people write. A list row often says nothing about where the
@@ -240,6 +254,17 @@ one line: a duplicate ID, a missing ID, a skills row naming a role that does
 not exist, a tech-stack entry missing from the index, a missing section. One
 defect per file, one line apart from a file that passes, so what a check is
 reacting to is visible in a diff.
+
+**The fictional CV is byte-identical to what `cv:id` writes from it with its
+IDs stripped**, which is what makes it a starter template rather than only a
+test input. Two shapes cannot live in it without giving that up: a bullet whose
+ID sits on a continuation line, because `cv:id` writes an ID on the line a
+bullet starts on; and a labelled bullet, because without an ID it reads as a
+metadata field and so is never offered one. Both are consequences of
+bootstrapping IDs from a file that has none, and neither is a reason to weaken
+the round trip, so they live in `tests/Fixtures/master-cv/labelled-and-wrapped.md`
+instead — a CV that passes lint and whose only purpose is that the ordinary
+parse covers them.
 
 No part of any fixture derives from a real CV.
 

@@ -15,6 +15,8 @@ class MasterCvParserTest extends TestCase
 {
     use MasterCvFixtures;
 
+    private const LABELLED_AND_WRAPPED = 'master-cv/labelled-and-wrapped.md';
+
     public function test_it_finds_every_recognised_section_despite_their_qualifiers(): void
     {
         $cv = $this->parseFixture();
@@ -372,6 +374,55 @@ class MasterCvParserTest extends TestCase
         }
     }
 
+    /**
+     * A unit with no block label never leaves its metadata preamble, so this
+     * is where a labelled bullet used to be read as a field and lost.
+     */
+    public function test_a_labelled_bullet_carrying_an_id_is_an_achievement_without_a_block_label(): void
+    {
+        $project = $this->role('tideline', self::LABELLED_AND_WRAPPED);
+
+        $this->assertSame(
+            ['tideline.1', 'tideline.2'],
+            array_map(static fn (Achievement $a): ?string => $a->id, $project->achievements),
+        );
+        $this->assertStringStartsWith(
+            '**Page weight cut by two thirds:** dropped',
+            $project->achievements[0]->text,
+        );
+    }
+
+    public function test_a_labelled_bullet_carrying_an_id_is_an_achievement_under_a_block_label(): void
+    {
+        $achievement = $this->role('wrenbury-freight', self::LABELLED_AND_WRAPPED)->achievements[0];
+
+        $this->assertSame('wrenbury-freight.1', $achievement->id);
+        $this->assertSame('Achievements & projects', $achievement->blockLabel);
+    }
+
+    /**
+     * Which is what `- **Dates:** …` is, and it must stay that way.
+     */
+    public function test_a_labelled_bullet_without_an_id_is_still_metadata(): void
+    {
+        $project = $this->role('tideline', self::LABELLED_AND_WRAPPED);
+
+        $this->assertSame(['Dates' => '2022'], $project->metadata);
+        $this->assertSame(['SQLite'], $project->technologies());
+    }
+
+    public function test_an_achievement_whose_id_falls_on_a_continuation_line_keeps_it(): void
+    {
+        $achievement = $this->role('wrenbury-freight', self::LABELLED_AND_WRAPPED)->achievements[1];
+
+        $this->assertSame('wrenbury-freight.2', $achievement->id);
+        $this->assertSame(
+            'Rewrote the consignment importer so a failed file can be re-driven rather than rebuilt by hand.',
+            $achievement->text,
+        );
+        $this->assertStringNotContainsString('{#', $achievement->text);
+    }
+
     public function test_a_labelled_value_on_a_line_of_its_own_is_metadata(): void
     {
         $project = $this->role('fathom-index');
@@ -461,9 +512,9 @@ class MasterCvParserTest extends TestCase
         return $headings;
     }
 
-    private function role(string $id): Role
+    private function role(string $id, string $fixture = 'master-cv.md'): Role
     {
-        foreach ($this->parseFixture()->allRoles() as $role) {
+        foreach ($this->parseFixture($fixture)->allRoles() as $role) {
             if ($role->id === $id) {
                 return $role;
             }
