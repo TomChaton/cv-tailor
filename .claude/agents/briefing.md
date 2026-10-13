@@ -112,6 +112,11 @@ The extension and backend meet at one HTTP API, versioned under `/api/v1`.
   code; the extension's typed client is generated from that document. A change
   to the API changes both sides in the same pull request, with the client
   regenerated.
+- **The document names no server.** Every instance is self-hosted at an
+  address of its own, so the client is handed a base URL and a token, and one
+  document then describes every installation. A document carrying whichever
+  `APP_URL` the person who exported it happened to have would be wrong
+  everywhere else.
 - **Capturing a job is idempotent.** The extension may retry; the backend
   deduplicates (see the backend briefing) and returns the existing job rather
   than creating a second.
@@ -121,6 +126,26 @@ The extension and backend meet at one HTTP API, versioned under `/api/v1`.
   location, salary), the source site, and whether hidden text was found in the
   container. Anything the backend can work out later, it works out later — so
   better extraction can be re-run over old captures.
+
+### Capture
+
+`POST /api/v1/postings`, with the extension's bearer token.
+
+- **A new posting answers `201`; one the backend already held answers `200`.**
+  The extension has two things to say — saved, against already saved — and a
+  status code is the cheapest place for that difference to live. A body that
+  said so instead would be a field every later caller had to remember to read.
+- **The response carries the posting's identity and nothing else.** The
+  extension has just sent the text and does not need it back.
+- **Capture never parses the master CV and never creates a revision.** A
+  posting captured while the CV fails its lint is still a posting worth having,
+  so capture is the one step the state of the CV cannot stop. Queueing a
+  posting for generation is a later step, and that one does depend on the CV.
+- **The API states a request body limit, and refuses a larger body with
+  `413`.** A capture carries a page's whole HTML, so without a stated ceiling
+  the largest page anybody browses decides how much memory the application
+  uses. The limit is configuration, and it is checked against the declared
+  length before anything reads the body.
 
 ## Data that never leaves the host
 

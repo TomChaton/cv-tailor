@@ -19,6 +19,15 @@ return [
     // system briefing.
     'trusted_proxies' => env('TRUSTED_PROXIES', ''),
 
+    'api' => [
+        // A capture carries a page's whole HTML, so the API states a ceiling
+        // rather than letting the largest page anybody browses decide how much
+        // memory this application uses. A body past it is refused with 413.
+        // Keep it below PHP's `post_max_size`, which is the only limit left
+        // once a body arrives with no declared length.
+        'max_body_bytes' => (int) env('CV_MAX_BODY_BYTES', 4 * 1024 * 1024),
+    ],
+
     'gotenberg' => [
         'url' => env('GOTENBERG_URL', 'http://gotenberg:3000'),
     ],

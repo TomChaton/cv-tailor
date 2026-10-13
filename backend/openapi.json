@@ -1,0 +1,244 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "cv-tailor",
+        "version": "1.0.0"
+    },
+    "security": [
+        {
+            "http": []
+        }
+    ],
+    "paths": {
+        "/api/v1/postings": {
+            "post": {
+                "operationId": "v1.postings.capture",
+                "description": "Idempotent: a capture whose title, company and extracted text match a\nposting already held answers with that posting, so the extension may\nretry a send it never saw the answer to. **A posting this capture created\nanswers 201; one that already existed answers 200.**\n\nThe response carries the posting's identity and nothing else. The\nextension has just sent the text and does not need it back.",
+                "summary": "Capture a posting",
+                "tags": [
+                    "CapturePosting"
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CapturePostingRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "id": {
+                                            "type": "integer"
+                                        },
+                                        "status": {
+                                            "$ref": "#/components/schemas/PostingStatus"
+                                        }
+                                    },
+                                    "required": [
+                                        "id",
+                                        "status"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "id": {
+                                            "type": "integer"
+                                        },
+                                        "status": {
+                                            "$ref": "#/components/schemas/PostingStatus"
+                                        }
+                                    },
+                                    "required": [
+                                        "id",
+                                        "status"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    },
+                    "413": {
+                        "description": "Request body larger than the limit this instance accepts",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "description": "Error overview."
+                                        }
+                                    },
+                                    "required": [
+                                        "message"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "securitySchemes": {
+            "http": {
+                "type": "http",
+                "scheme": "bearer"
+            }
+        },
+        "schemas": {
+            "CapturePostingRequest": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "format": "uri",
+                        "description": "The page the posting was captured from.",
+                        "maxLength": 2048
+                    },
+                    "source_site": {
+                        "type": "string",
+                        "description": "The hostname, or the key of the extractor that read the page.",
+                        "maxLength": 255
+                    },
+                    "extracted_text": {
+                        "type": "string",
+                        "description": "The visible text of the job description."
+                    },
+                    "raw_html": {
+                        "type": "string",
+                        "description": "The extracted container's HTML, so extraction can be re-run later."
+                    },
+                    "has_hidden_text": {
+                        "type": "boolean",
+                        "description": "Whether the container held text a reader cannot see."
+                    },
+                    "title": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "description": "Taken from the page where it says so, and omitted rather than guessed.",
+                        "maxLength": 255
+                    },
+                    "company": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 255
+                    },
+                    "location": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 255
+                    },
+                    "salary_text": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 255
+                    }
+                },
+                "required": [
+                    "url",
+                    "source_site",
+                    "extracted_text",
+                    "raw_html",
+                    "has_hidden_text"
+                ],
+                "title": "CapturePostingRequest"
+            },
+            "PostingStatus": {
+                "type": "string",
+                "description": "Where a captured posting has got to. `captured \u2192 queued \u2192 ready \u2192 reviewed \u2192 applied`, plus `discarded` from anywhere. The list doubles as an application tracker, which is why the tail of it records what the owner did rather than what the pipeline did.\n",
+                "enum": [
+                    "captured",
+                    "queued",
+                    "ready",
+                    "reviewed",
+                    "applied",
+                    "discarded"
+                ],
+                "title": "PostingStatus"
+            }
+        },
+        "responses": {
+            "AuthenticationException": {
+                "description": "Unauthenticated",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error overview."
+                                }
+                            },
+                            "required": [
+                                "message"
+                            ]
+                        }
+                    }
+                }
+            },
+            "ValidationException": {
+                "description": "Validation error",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Errors overview."
+                                },
+                                "errors": {
+                                    "type": "object",
+                                    "description": "A detailed description of each field that failed validation.",
+                                    "additionalProperties": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            },
+                            "required": [
+                                "message",
+                                "errors"
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
