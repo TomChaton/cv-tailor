@@ -680,11 +680,98 @@ than batched — it is cheap, and batching it would double the time to a ready C
 
 ## Rendering
 
-The validated selection is resolved against the master CV into a complete
-document model (`resolved_json`), rendered to HTML with Blade, and converted to
-PDF by Gotenberg. Section headings and other template words come from
-`lang/en_GB`. Other output formats (e.g. `.docx`) render from the same
-resolved model.
+### `resolved_json` is the document, and the only input to rendering
+
+The validated selection is resolved against the master CV version it names into
+a complete document model: no IDs left to look up and nothing further to fetch.
+**It is format-agnostic.** Nothing in it knows about HTML, pages or paper, so a
+second output format — `.docx`, plain text — is a second template rather than a
+second pipeline, and two formats say the same thing because both read the same
+model.
+
+That is why anything a renderer would otherwise decide for itself is decided at
+resolve time: which wording a rewording put on the page, what order the roles go
+in, whether a condensed role keeps its prose, which bullet sits under which.
+
+### What the model decides, and what the code decides
+
+The model chooses which roles appear, which of their bullets appear and in what
+order, which skills to lead with, and the words of a rewording. Everything else
+is read from the parse.
+
+- **Role order and dates come from the parsed CV** — reverse chronological,
+  whatever order the output returned — and so do the employer and the title.
+- **The header comes from the parsed contact section**, which never reaches the
+  model. That is what makes a mistyped phone number impossible rather than
+  unlikely: nothing can alter a number it has never seen. The headline is the
+  one header field the model chooses, and it chooses among the CV's own headline
+  titles; one the CV does not offer is dropped.
+- **Every contact field the author wrote is printed, in their order.** Ranking
+  contact labels by whether they belong on a CV would invent a taxonomy the
+  author never wrote; the section is theirs to edit.
+- **Awards and interests come from the parse too.** The output schema has no
+  field for either, so the model never touches them, and a section the author
+  wrote appearing on every CV is the lesser error against one silently lost.
+- **An item the role does not own, or one the author marked `TODO`, is dropped
+  rather than printed.** Validation blocks a revision that asks for either; a
+  renderer that printed it anyway would be a second route onto the page.
+
+### "Do not elaborate" is honoured at resolve time
+
+Content the author marked "do not elaborate" resolves to their own sentence even
+when the output supplied a rewording. The parser sets the flag and the resolver
+reads it, because resolving is the last point before the words reach a page and
+a check that merely reported it would leave them there.
+
+### A revision has exactly one PDF
+
+The path is derived from the revision's ID, so rendering the same revision again
+replaces the file rather than leaving a second copy nobody can tell from the
+first. Generated PDFs live on the `pdfs` disk, whose root is `CV_PDF_ROOT` and a
+named volume in the deployment; `pdf_path` holds the path relative to that root.
+An absolute path would be wrong the first time the volume moved.
+
+### A converter failure leaves the revision `validated`
+
+Resolving is recorded before the conversion is attempted, so a converter that is
+down leaves behind the document it would have rendered. The revision stays
+`validated` and never becomes `failed`: it was produced correctly and only the
+conversion did not happen, so the next attempt has everything it needs.
+`pdf_path` is left alone, because a path with no file behind it is worse than no
+path at all.
+
+A refused render — a blocking finding, or no validation at all — records no
+error on the revision. The verdict is already there in `validation_json`, and
+restating it would be the same fact in two places.
+
+### The template
+
+`resolved_json` → Blade → HTML → Gotenberg → PDF. **Section headings and every
+other word the template supplies come from `lang/en_GB/cv.php`**; the CV's
+content never does, because it arrives from the master CV through the pipeline
+and a catalogue is for words the owner reads on a screen.
+
+A master CV's bullets carry inline Markdown — a bold lead-in is the format's own
+convention — so the template converts it. The text is escaped first and every
+tag is the converter's own, which is what stops a master CV or a model's output
+contributing one.
+
+**No test starts Gotenberg.** The converter sits behind an interface and the
+test environment binds a fake, for the same reason the LLM client does.
+
+### Seeing what the template does
+
+`php artisan cv:preview` renders the whole master CV through the CV template —
+every role at its policy default, every selectable bullet, every skill, verbatim
+— with no model involved and nothing written to the database. A diff cannot show
+a CV that clips a column or breaks a page in the wrong place, and neither can a
+test.
+
+**It is not a way round the render guard.** The guard stands between a
+*revision* and a PDF because a revision carries model output. A preview carries
+none: every word of it is the author's own, taken from their own file. It is
+linted and run through the same validators all the same, and refuses on a
+blocking finding exactly as the guard would.
 
 ## Review UI
 
@@ -781,6 +868,7 @@ toolchain:
 | Issue an extension token | `docker compose exec app php artisan cv:token` |
 | Check the master CV | `docker compose exec app php artisan cv:lint` |
 | Add the IDs a master CV is missing | `docker compose exec app php artisan cv:id /var/lib/cv-tailor/master-cv.md > master-cv-with-ids.md` |
+| See the master CV through the CV template | `docker compose exec app php artisan cv:preview /tmp/cv-preview.pdf` |
 
 `cv:owner` prompts, and takes `--name`, `--email` and `--password` when a
 script needs it. `cv:token` prints the token once; only its hash is stored.
@@ -788,7 +876,10 @@ script needs it. `cv:token` prints the token once; only its hash is stored.
 `cv:lint` checks the mounted CV, and takes a path when another file is wanted.
 `cv:id` reads the mounted CV and writes elsewhere — standard output above, or a
 path given as a second argument; the mount is read-only, so there is nowhere
-inside the container to write it but `/tmp`.
+inside the container to write it but `/tmp`. `cv:preview` is the same: it reads
+the mounted CV, takes `--cv` for another file, and writes the PDF where it is
+told, which has to be somewhere writable. `docker compose cp` brings it out to
+be read.
 
 ### Two things that are easy to get wrong
 

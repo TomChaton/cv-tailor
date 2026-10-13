@@ -27,6 +27,39 @@ final readonly class Contact
     }
 
     /**
+     * Who the CV is for.
+     */
+    public function name(): ?string
+    {
+        foreach ($this->fields as $label => $value) {
+            if (Markdown::normaliseHeading($label) === 'name' && trim($value) !== '') {
+                return trim($value);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Everything but the name, in the order the author wrote it.
+     *
+     * The author decided what belongs in their contact section, so nothing here
+     * decides which of those fields is worth printing: a tool that ranked
+     * contact labels would be inventing a taxonomy its author never wrote.
+     *
+     * @return array<string, string>
+     */
+    public function details(): array
+    {
+        return array_filter(
+            $this->fields,
+            static fn (string $value, string $label): bool => Markdown::normaliseHeading($label) !== 'name'
+                && trim($value) !== '',
+            ARRAY_FILTER_USE_BOTH,
+        );
+    }
+
+    /**
      * @return array<string, string>
      */
     public function toArray(): array
