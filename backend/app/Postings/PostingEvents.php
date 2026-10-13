@@ -3,10 +3,11 @@
 namespace App\Postings;
 
 use App\Models\Posting;
+use App\Models\Revision;
 use App\Observability\EventLogger;
 
 /**
- * Capture's log lines, in one place.
+ * The postings' log lines, in one place.
  *
  * Event names are part of the interface, so they live here rather than at their
  * call sites and are not renamed casually.
@@ -44,6 +45,17 @@ final readonly class PostingEvents
         $this->log->log('posting.duplicate', [
             'posting_id' => $posting->id,
             'source_site' => $capture->sourceSite,
+        ]);
+    }
+
+    /**
+     * A posting whose current revision is a CV the owner can send.
+     */
+    public function ready(Revision $revision): void
+    {
+        $this->log->log('posting.ready', [
+            'posting_id' => $revision->posting_id,
+            'revision_id' => $revision->id,
         ]);
     }
 

@@ -3,8 +3,10 @@
 namespace Tests\Feature\Rendering;
 
 use App\Models\MasterCvVersion;
+use App\Models\Posting;
 use App\Models\Revision;
 use App\Observability\EventLogger;
+use App\Postings\PostingStatus;
 use App\Rendering\PdfConversionFailed;
 use App\Rendering\PdfConverter;
 use App\Rendering\RenderRevision;
@@ -156,6 +158,32 @@ class RenderRevisionTest extends TestCase
         $this->render()->handle($revision);
 
         $this->assertSame(RevisionStatus::Ready, $revision->fresh()?->status);
+    }
+
+    /**
+     * The posting's `ready` is denormalised from its current revision, and the
+     * step that puts a revision there is what keeps the two in step. Without
+     * it the tracker the owner reads understates what is finished.
+     */
+    public function test_a_rendered_revision_takes_its_posting_to_ready(): void
+    {
+        $revision = $this->revision();
+        $posting = $this->tracker($revision, PostingStatus::Queued);
+
+        $this->render()->handle($revision);
+
+        $this->assertSame(PostingStatus::Ready, $posting->refresh()->status);
+    }
+
+    public function test_a_render_leaves_a_reviewed_posting_where_the_owner_put_it(): void
+    {
+        $revision = $this->revision();
+        $posting = $this->tracker($revision, PostingStatus::Reviewed);
+
+        $this->render()->handle($revision);
+
+        $this->assertSame(RevisionStatus::Ready, $revision->fresh()?->status);
+        $this->assertSame(PostingStatus::Reviewed, $posting->refresh()->status);
     }
 
     public function test_the_header_in_the_rendered_page_comes_from_the_contact_section(): void
@@ -326,6 +354,22 @@ class RenderRevisionTest extends TestCase
             'output_json' => $this->selection(),
             'validation_json' => $findings,
         ]);
+    }
+
+    /**
+     * A posting that is actually looking at this revision, at the status the
+     * owner left it.
+     */
+    private function tracker(Revision $revision, PostingStatus $status): Posting
+    {
+        $posting = $revision->posting()->firstOrFail();
+
+        $posting->fill([
+            'status' => $status,
+            'current_revision_id' => $revision->id,
+        ])->save();
+
+        return $posting;
     }
 
     private function render(): RenderRevision
