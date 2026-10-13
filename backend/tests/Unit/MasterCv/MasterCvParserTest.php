@@ -445,7 +445,8 @@ class MasterCvParserTest extends TestCase
             'projects' => 2,
             'achievements' => 25,
             'sub_bullets' => 7,
-            'skills' => 44,
+            'skills_written' => 44,
+            'skills_derived' => 0,
         ], $this->parseFixture()->counts());
     }
 

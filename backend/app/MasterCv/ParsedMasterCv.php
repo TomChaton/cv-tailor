@@ -71,6 +71,11 @@ final readonly class ParsedMasterCv
      * Counts per kind, for the parse log event. A parser regression that
      * silently drops half the file shows up here and nowhere else.
      *
+     * Written and derived skills are counted apart. A single total would hide
+     * the symptom that matters: a derivation producing a wildly different
+     * number from one parse to the next, which a total absorbs because every
+     * row the index loses the stacks give back.
+     *
      * @return array<string, int>
      */
     public function counts(): array
@@ -85,12 +90,20 @@ final readonly class ParsedMasterCv
             }
         }
 
+        $written = 0;
+        $derived = 0;
+
+        foreach ($this->allSkills() as $skill) {
+            $skill->derived ? $derived++ : $written++;
+        }
+
         return [
             'roles' => count($this->roles),
             'projects' => count($this->independentProjects),
             'achievements' => $achievements,
             'sub_bullets' => $subBullets,
-            'skills' => count($this->allSkills()),
+            'skills_written' => $written,
+            'skills_derived' => $derived,
         ];
     }
 

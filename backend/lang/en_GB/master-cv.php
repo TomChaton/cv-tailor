@@ -30,7 +30,8 @@ return [
         'projects' => 'Independent projects',
         'achievements' => 'Achievements',
         'sub_bullets' => 'Sub-bullets',
-        'skills' => 'Skills',
+        'skills_written' => 'Skills written',
+        'skills_derived' => 'Skills derived',
     ],
 
     'problems' => 'Problems',
@@ -42,7 +43,7 @@ return [
         'sections' => 'Sections',
         'ids' => 'IDs',
         'skills_index_references' => 'Skills index',
-        'tech_stack_coverage' => 'Tech stacks',
+        'skill_names' => 'Skill names',
         'block_labels' => 'Block labels',
     ],
 

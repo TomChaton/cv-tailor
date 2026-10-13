@@ -4,6 +4,10 @@ namespace App\MasterCv;
 
 /**
  * One subsection of the skills index, with the rows under it.
+ *
+ * A group may hold rows the author never wrote: a technology named in a tech
+ * stack is filed here under the label on its stack line, and a heading the
+ * author already wrote takes those rows rather than gaining a twin beside it.
  */
 final readonly class SkillGroup
 {

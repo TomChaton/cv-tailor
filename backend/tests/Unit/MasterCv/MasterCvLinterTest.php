@@ -5,8 +5,8 @@ namespace Tests\Unit\MasterCv;
 use App\MasterCv\Lint\Checks\BlockLabelsAreRecognised;
 use App\MasterCv\Lint\Checks\IdsArePresentAndUnique;
 use App\MasterCv\Lint\Checks\RecognisedSectionsPresent;
+use App\MasterCv\Lint\Checks\SkillNamesAreDistinct;
 use App\MasterCv\Lint\Checks\SkillsIndexNamesRealRoles;
-use App\MasterCv\Lint\Checks\TechStackIsInSkillsIndex;
 use App\MasterCv\Lint\Finding;
 use App\MasterCv\Lint\LintReport;
 use App\MasterCv\Lint\MasterCvLinter;
@@ -83,7 +83,6 @@ class MasterCvLinterTest extends TestCase
             'a duplicate ID' => ['broken-duplicate-id.md', 'ids', 42],
             'a missing ID' => ['broken-missing-id.md', 'ids', 42],
             'a skills row naming a role that does not exist' => ['broken-skill-names-no-role.md', 'skills_index_references', 32],
-            'a tech stack entry missing from the index' => ['broken-tech-stack-not-in-index.md', 'tech_stack_coverage', 46],
         ];
     }
 
@@ -188,6 +187,60 @@ class MasterCvLinterTest extends TestCase
         $this->assertSame([], $report->remedies());
     }
 
+    /**
+     * A technology with no row gets one, so there is nothing left for a
+     * coverage check to report.
+     */
+    public function test_a_tech_stack_entry_with_no_row_is_not_a_problem(): void
+    {
+        $report = $this->lint('master-cv/derives-a-skill.md');
+
+        $this->assertTrue($report->passes(), $this->describe($report));
+        $this->assertSame([], $report->notes());
+    }
+
+    /**
+     * Two roles spelling one technology differently are two skills, which the
+     * author may have meant — so it is said and never enforced.
+     */
+    public function test_two_names_that_differ_only_trivially_are_a_note_and_never_a_failure(): void
+    {
+        $report = $this->linter()->lint($this->parser()->parse(str_replace(
+            "- Data: Redis\n",
+            "- Data: Redis\n- Caching: Redis 7\n",
+            $this->fixture('master-cv/derives-a-skill.md'),
+        )));
+
+        $notes = $this->notesFrom($report, 'skill_names');
+
+        $this->assertTrue($report->passes());
+        $this->assertCount(1, $notes);
+        $this->assertSame(
+            '"Redis 7" and "Redis" on line 46 differ only in how they are written.',
+            $notes[0]->message,
+        );
+    }
+
+    /**
+     * Two rows that each pin a version are two deliberate statements, not one
+     * skill written twice.
+     */
+    public function test_names_pinning_different_versions_are_left_alone(): void
+    {
+        $this->assertSame([], $this->notesFrom($this->lint(), 'skill_names'));
+    }
+
+    /**
+     * @return list<Finding>
+     */
+    private function notesFrom(LintReport $report, string $check): array
+    {
+        return array_values(array_filter(
+            $report->notes(),
+            static fn (Finding $finding): bool => $finding->check === $check,
+        ));
+    }
+
     private function lint(string $fixture = 'master-cv.md'): LintReport
     {
         return $this->linter()->lint($this->parseFixture($fixture));
@@ -199,7 +252,7 @@ class MasterCvLinterTest extends TestCase
             new RecognisedSectionsPresent,
             new IdsArePresentAndUnique,
             new SkillsIndexNamesRealRoles,
-            new TechStackIsInSkillsIndex,
+            new SkillNamesAreDistinct,
             new BlockLabelsAreRecognised,
         );
     }

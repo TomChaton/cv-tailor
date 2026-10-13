@@ -139,7 +139,8 @@ class InspectMasterCvTest extends TestCase
 
         $this->assertNotNull($line);
         $this->assertSame(4, $line['context']['roles']);
-        $this->assertSame(44, $line['context']['skills']);
+        $this->assertSame(44, $line['context']['skills_written']);
+        $this->assertSame(0, $line['context']['skills_derived']);
         $this->assertFalse($log->has('master_cv.lint_failed'));
     }
 

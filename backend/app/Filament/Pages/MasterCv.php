@@ -172,7 +172,7 @@ class MasterCv extends Page
                 ->label(__('master-cv.version'))
                 ->state($report->version)
                 ->fontFamily(FontFamily::Mono),
-            Grid::make(['default' => 2, 'sm' => 3, 'xl' => 5])
+            Grid::make(['default' => 2, 'sm' => 3, 'xl' => 6])
                 ->schema($this->counts($report)),
         ];
     }
