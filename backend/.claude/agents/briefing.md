@@ -1102,6 +1102,42 @@ It shows:
 - Actions: regenerate with instructions, edit (creating a child), generate now,
   mark applied (recording `applied_revision_id`), discard.
 
+### A page's content is schema components, not a template
+
+Filament ships its panel CSS prebuilt from its own class names, and this
+application has no front-end build to add to it. A hand-written Blade template
+therefore has no utility classes to reach for: everything a page renders is
+assembled from schema components, which carry the styles that exist.
+
+### The master CV page
+
+The master CV is the part of the system its owner touches most, so it has a
+page: what the application makes of the file, every lint finding against it,
+and the two actions worth having.
+
+- **It reports and offers; it does not author.** The CV is a Markdown file its
+  owner edits for years in an editor, and the mount is read-only by decision —
+  so "add missing IDs" hands back a corrected copy to **download**, exactly as
+  `cv:id` does, and the author reads a diff and adopts it themselves. A page
+  that wrote to the CV would be a second editing surface for a document that
+  already has one, and would cost the read-only mount.
+- **It re-reads on demand**, because the file changes outside the application:
+  the parse is made afresh on every request and never remembered, so a CV saved
+  in an editor is seen without a restart, and "re-check" is a button whose job
+  is to cause that read.
+- **Reporting on a CV is not generating from one.** The page's read applies the
+  same gate as generation — a CV that fails lint never becomes a
+  `master_cv_versions` row — so looking at a broken CV cannot leave behind
+  something a revision could claim it was built from.
+- **A file the application cannot read is an outcome, not an exception.** The
+  page names what is at the path, because a directory and a permissions problem
+  send its reader somewhere different, and `cv:status` answers that question
+  from the same place so the two surfaces cannot disagree.
+- **Lint's own findings are the exception to the catalogue rule.** They are
+  written for the CV's author and come from the linter; the page prints them as
+  it is given them, and supplies only the heading of the check that raised each
+  one.
+
 ## Observability
 
 - **Log lines are written through one class**, so `event` is never optional.
