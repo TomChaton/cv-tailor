@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Generation\PromptVersion;
 use App\Models\MasterCvVersion;
 use App\Models\Posting;
 use App\Models\Revision;
@@ -27,7 +28,7 @@ class RevisionFactory extends Factory
             'instructions' => null,
             // No test reaches a live model, so this names no real one.
             'model' => 'test-model',
-            'prompt_version' => 'v1',
+            'prompt_version' => PromptVersion::CURRENT,
             'status' => RevisionStatus::Pending,
             'attempts' => 0,
         ];

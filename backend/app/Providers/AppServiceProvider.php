@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Generation\BuildGenerationRequest;
 use App\Http\TrustedProxies;
 use App\MasterCv\ReadMasterCv;
 use App\Observability\Listeners\RecordWorkerHeartbeat;
@@ -40,6 +41,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->when([MasterCvSection::class, ReadMasterCv::class])
             ->needs('$path')
             ->give(fn (): string => Config::string('cv.master_cv.path'));
+
+        $this->app->when(BuildGenerationRequest::class)
+            ->needs('$maxTokens')
+            ->give(fn (): int => Config::integer('cv.llm.max_output_tokens.generation'));
     }
 
     public function boot(): void
