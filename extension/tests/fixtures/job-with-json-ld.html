@@ -1,0 +1,57 @@
+<head>
+  <meta charset="utf-8" />
+  <title>Senior PHP Engineer at Northwind Systems</title>
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "JobPosting",
+      "title": "Senior PHP Engineer",
+      "hiringOrganization": { "@type": "Organization", "name": "Northwind Systems" },
+      "jobLocation": {
+        "@type": "Place",
+        "address": {
+          "@type": "PostalAddress",
+          "addressLocality": "Leeds",
+          "addressRegion": "West Yorkshire",
+          "addressCountry": "GB"
+        }
+      },
+      "baseSalary": {
+        "@type": "MonetaryAmount",
+        "currency": "GBP",
+        "value": { "@type": "QuantitativeValue", "minValue": 65000, "maxValue": 78000, "unitText": "YEAR" }
+      }
+    }
+  </script>
+</head>
+<body>
+  <nav><a href="/jobs">All jobs</a> <a href="/saved">Saved</a></nav>
+  <article id="description">
+    <h1>Senior PHP Engineer</h1>
+    <p>
+      Northwind Systems runs the clearing platform that moves parcels between regional depots, and
+      we are looking for a senior PHP engineer to join the team that keeps it honest. You will own
+      the services that reconcile depot scans against the shipping manifests, and you will be the
+      person other teams come to when a reconciliation disagrees with reality.
+    </p>
+    <p>
+      The platform is a long-lived Laravel application with a queue-heavy design: most of what it
+      does happens out of band, driven by jobs that have to be safe to retry. We care a great deal
+      about idempotency, about observable failure, and about tests that describe behaviour rather
+      than implementation. You would spend your first month pairing on the reconciliation service
+      before taking a slice of it on yourself.
+    </p>
+    <h2>What we are looking for</h2>
+    <ul>
+      <li>Several years of PHP in production, including work you would still defend today.</li>
+      <li>Comfort with a relational database under load, and with the queries that go wrong there.</li>
+      <li>A habit of leaving a codebase easier to change than you found it.</li>
+    </ul>
+    <p>
+      We work four days in the Leeds office and one wherever suits you. Interviews are a
+      conversation, a pairing session on our own code, and a chat with the depot operations team
+      whose work the platform exists to support.
+    </p>
+  </article>
+  <footer><p>Northwind Systems is an equal opportunities employer.</p></footer>
+</body>

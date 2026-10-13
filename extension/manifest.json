@@ -4,9 +4,24 @@
   "description": "__MSG_extensionDescription__",
   "default_locale": "en_GB",
   "version": "0.1.0",
-  "permissions": ["activeTab", "scripting", "storage"],
+  "permissions": ["activeTab", "alarms", "scripting", "storage"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
   "background": {
     "service_worker": "service-worker.js",
     "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Alt+Shift+J"
+      }
+    }
   }
 }

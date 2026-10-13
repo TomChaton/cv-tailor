@@ -4,5 +4,62 @@
   },
   "extensionDescription": {
     "message": "Capture a job description and send it to cv-tailor."
+  },
+  "captureSaved": {
+    "message": "Saved ✓"
+  },
+  "captureAlreadySaved": {
+    "message": "Already saved"
+  },
+  "captureNotConfigured": {
+    "message": "Not configured"
+  },
+  "captureNothingFound": {
+    "message": "No job description on this page"
+  },
+  "captureUnreachable": {
+    "message": "Backend unreachable"
+  },
+  "captureTokenRejected": {
+    "message": "Token rejected"
+  },
+  "captureBackendError": {
+    "message": "Backend error"
+  },
+  "captureTooLarge": {
+    "message": "Page too large for this backend"
+  },
+  "captureRejected": {
+    "message": "Backend rejected the capture"
+  },
+  "captureKept": {
+    "message": "Kept, and sent again later"
+  },
+  "popupSettings": {
+    "message": "Settings"
+  },
+  "badgeLanded": {
+    "message": "✓"
+  },
+  "badgeRefused": {
+    "message": "!"
+  },
+  "optionsBackendUrl": {
+    "message": "Backend URL"
+  },
+  "optionsToken": {
+    "message": "API token"
+  },
+  "optionsSave": {
+    "message": "Save"
+  },
+  "optionsSaved": {
+    "message": "Saved ✓"
+  },
+  "optionsUrlInvalid": {
+    "message": "Enter an http or https URL"
+  },
+  "optionsPermissionRefused": {
+    "message": "Permission refused. Not saved."
   }
 }
