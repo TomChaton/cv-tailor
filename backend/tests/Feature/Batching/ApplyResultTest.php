@@ -5,6 +5,7 @@ namespace Tests\Feature\Batching;
 use App\Batching\ApplyResult;
 use App\Batching\LlmBatchState;
 use App\Batching\SubmissionOutcome;
+use App\Jobs\ValidateGeneratedRevision;
 use App\Llm\BatchResult;
 use App\Llm\LlmFailureKind;
 use App\Llm\LlmResponse;
@@ -15,6 +16,7 @@ use App\Models\Revision;
 use App\Observability\EventLogger;
 use App\Revisions\RevisionStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Tests\Support\RecordingEventLogger;
 use Tests\TestCase;
 
@@ -32,6 +34,10 @@ class ApplyResultTest extends TestCase
         $this->instance(EventLogger::class, $this->log);
 
         config(['cv.batches.attempt_limit' => 3]);
+
+        // The chain beyond a stored result belongs to validation and is
+        // tested there. These tests stop at the hand-off.
+        Queue::fake([ValidateGeneratedRevision::class]);
     }
 
     public function test_a_succeeded_result_is_stored_and_the_revision_is_generated(): void

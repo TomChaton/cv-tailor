@@ -5,6 +5,7 @@ namespace Tests\Feature\Console;
 use App\Batching\LlmBatchState;
 use App\Batching\SubmissionOutcome;
 use App\Batching\SubmitterHalt;
+use App\Jobs\ValidateGeneratedRevision;
 use App\Llm\Testing\FakeLlmClient;
 use App\Models\LlmBatch;
 use App\Models\LlmBatchRevision;
@@ -13,11 +14,21 @@ use App\Revisions\RevisionStatus;
 use Illuminate\Console\Scheduling\CallbackEvent;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class CvBatchPollCommandTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // The chain beyond a stored result belongs to validation and is
+        // tested there. These tests stop at the hand-off.
+        Queue::fake([ValidateGeneratedRevision::class]);
+    }
 
     public function test_it_succeeds_with_no_open_batches(): void
     {

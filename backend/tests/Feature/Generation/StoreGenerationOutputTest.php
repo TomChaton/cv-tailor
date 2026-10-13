@@ -4,12 +4,14 @@ namespace Tests\Feature\Generation;
 
 use App\Generation\GenerationOutputIsUnusable;
 use App\Generation\StoreGenerationOutput;
+use App\Jobs\ValidateGeneratedRevision;
 use App\Llm\LlmResponse;
 use App\Llm\TokenUsage;
 use App\Models\Revision;
 use App\Observability\EventLogger;
 use App\Revisions\RevisionStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Mockery;
 use Mockery\MockInterface;
 use Tests\TestCase;
@@ -17,6 +19,16 @@ use Tests\TestCase;
 class StoreGenerationOutputTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // A stored result hands the revision to validation. That it does so
+        // is asserted here; what validation then makes of it is validation's
+        // own test.
+        Queue::fake([ValidateGeneratedRevision::class]);
+    }
 
     public function test_it_stores_the_selection_the_usage_and_the_model(): void
     {
@@ -49,6 +61,35 @@ class StoreGenerationOutputTest extends TestCase
         $this->store()->handle($revision, $this->response());
 
         $this->assertSame('something-older', $revision->fresh()?->prompt_version);
+    }
+
+    /**
+     * Queued from here rather than by the caller, so that every path that
+     * stores a result continues the chain without having to remember to.
+     */
+    public function test_a_stored_result_is_handed_to_validation(): void
+    {
+        $revision = Revision::factory()->create();
+
+        $this->store()->handle($revision, $this->response());
+
+        Queue::assertPushed(
+            ValidateGeneratedRevision::class,
+            fn (ValidateGeneratedRevision $job): bool => $job->revision->is($revision),
+        );
+    }
+
+    public function test_a_result_that_could_not_be_stored_hands_on_nothing(): void
+    {
+        $revision = Revision::factory()->create();
+
+        try {
+            $this->store()->handle($revision, $this->response('{"headline":"Platf'));
+        } catch (GenerationOutputIsUnusable) {
+            // The dispatch is what this test is about.
+        }
+
+        Queue::assertNotPushed(ValidateGeneratedRevision::class);
     }
 
     public function test_it_logs_what_it_stored_as_sizes(): void
