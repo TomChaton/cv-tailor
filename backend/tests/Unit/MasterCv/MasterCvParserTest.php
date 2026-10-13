@@ -2,6 +2,7 @@
 
 namespace Tests\Unit\MasterCv;
 
+use App\MasterCv\Achievement;
 use App\MasterCv\ContentMarker;
 use App\MasterCv\Role;
 use App\MasterCv\RoleKind;
@@ -259,6 +260,118 @@ class MasterCvParserTest extends TestCase
         }
     }
 
+    /**
+     * A parser that drops a unit silently removes a true thing from a system
+     * whose whole purpose is to say only true things, so the count is checked
+     * against the file rather than against a number somebody kept up to date.
+     */
+    public function test_every_heading_in_the_roles_and_projects_sections_becomes_one(): void
+    {
+        $cv = $this->parseFixture();
+
+        $this->assertSame(
+            $this->headingsIn('Employment history'),
+            count($cv->roles),
+        );
+
+        $this->assertSame(
+            $this->headingsIn('Independent projects'),
+            count($cv->independentProjects),
+        );
+    }
+
+    public function test_a_project_heading_ends_the_block_above_it_even_when_its_label_is_unknown(): void
+    {
+        $cv = $this->parser()->parse(<<<'MARKDOWN'
+            ## Independent projects (not employment)
+
+            ### First Project — My role {#first-project}
+
+            - **Dates:** 2026
+
+            **Delivery system (something unrecognised)**
+            - A bullet {#first-project.1}
+            - Another bullet {#first-project.2}
+
+            ### Second Project — My role {#second-project}
+
+            - **Dates:** 2026
+
+            **Achievements & projects**
+            - A bullet {#second-project.1}
+            MARKDOWN);
+
+        $this->assertCount(2, $cv->independentProjects);
+        $this->assertSame('first-project', $cv->independentProjects[0]->id);
+        $this->assertSame('second-project', $cv->independentProjects[1]->id);
+        $this->assertCount(2, $cv->independentProjects[0]->achievements);
+        $this->assertSame(
+            ['second-project.1'],
+            array_map(
+                static fn (Achievement $a): ?string => $a->id,
+                $cv->independentProjects[1]->achievements,
+            ),
+        );
+    }
+
+    public function test_a_role_heading_ends_the_block_above_it_even_when_its_label_is_unknown(): void
+    {
+        $cv = $this->parser()->parse(<<<'MARKDOWN'
+            ## Employment history
+
+            ### Alder Freight — Engineer {#alder-freight}
+
+            - **Dates:** 2024 – 2026
+
+            **Delivery system (something unrecognised)**
+            - A bullet {#alder-freight.1}
+
+            ### Brambling Care — Engineer {#brambling-care}
+
+            - **Dates:** 2022 – 2024
+
+            **Achievements & projects**
+            - A bullet {#brambling-care.1}
+            MARKDOWN);
+
+        $this->assertCount(2, $cv->roles);
+        $this->assertSame('alder-freight', $cv->roles[0]->id);
+        $this->assertSame('brambling-care', $cv->roles[1]->id);
+        $this->assertCount(1, $cv->roles[0]->achievements);
+        $this->assertCount(1, $cv->roles[1]->achievements);
+    }
+
+    /**
+     * An unknown label changes how its bullets are read; a recognised one
+     * must not change where a role ends either.
+     */
+    public function test_a_heading_ends_every_recognised_block_too(): void
+    {
+        foreach (['Context', 'Tech stack', 'Achievements & projects', 'Responsibilities', 'Projects'] as $label) {
+            $cv = $this->parser()->parse(<<<MARKDOWN
+                ## Independent projects (not employment)
+
+                ### First Project — My role {#first-project}
+
+                - **Dates:** 2026
+
+                **{$label}**
+                - A line about the first project. {#first-project.1}
+
+                ### Second Project — My role {#second-project}
+
+                - **Dates:** 2026
+
+                **Achievements & projects**
+                - A bullet {#second-project.1}
+                MARKDOWN);
+
+            $this->assertCount(2, $cv->independentProjects, 'after a "'.$label.'" block');
+            $this->assertSame('second-project', $cv->independentProjects[1]->id);
+            $this->assertCount(1, $cv->independentProjects[1]->achievements);
+        }
+    }
+
     public function test_a_labelled_value_on_a_line_of_its_own_is_metadata(): void
     {
         $project = $this->role('fathom-index');
@@ -320,6 +433,32 @@ class MasterCvParserTest extends TestCase
             '07700 900123',
             json_encode($cv->toArray(), JSON_THROW_ON_ERROR),
         );
+    }
+
+    /**
+     * The `###` headings the fixture itself carries under a `##` section, read
+     * from the file rather than counted by hand.
+     */
+    private function headingsIn(string $section): int
+    {
+        $headings = 0;
+        $inSection = false;
+
+        foreach (explode("\n", $this->fixture()) as $line) {
+            if (str_starts_with($line, '## ')) {
+                $inSection = str_starts_with($line, '## '.$section);
+
+                continue;
+            }
+
+            if ($inSection && str_starts_with($line, '### ')) {
+                $headings++;
+            }
+        }
+
+        $this->assertGreaterThan(1, $headings, 'the fixture has no "'.$section.'" section');
+
+        return $headings;
     }
 
     private function role(string $id): Role
