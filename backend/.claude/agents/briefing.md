@@ -1169,7 +1169,7 @@ the mounted CV, takes `--cv` for another file, and writes the PDF where it is
 told, which has to be somewhere writable. `docker compose cp` brings it out to
 be read.
 
-### Three things that are easy to get wrong
+### Things that are easy to get wrong
 
 - **The test suite supplies its own environment** and is handed no `.env`, so a
   result never depends on how a particular machine is configured. Test values
@@ -1182,3 +1182,10 @@ be read.
   is served the second time by the instance the first request built, and the
   swap appears to have been ignored. Install the double before the first
   request of the test.
+- **The queue's retry window and the worker's timeout are one decision in two
+  files.** `DB_QUEUE_RETRY_AFTER` is when the queue gives up on a reserved job
+  and offers it to another worker; `--timeout` on the worker's `queue:work` is
+  when a worker kills a job that is still running. The window has to be the
+  longer of the two, or a job that is merely slow is handed to a second worker
+  while the first is still working on it, and the pipeline's jobs are the slow
+  ones. Change either number and change both.
