@@ -2,6 +2,7 @@
 
 namespace Tests\Concerns;
 
+use App\MasterCv\DeriveSkillsFromTechStacks;
 use App\MasterCv\MasterCvParser;
 use App\MasterCv\ParsedMasterCv;
 use App\MasterCv\RoleParser;
@@ -30,6 +31,6 @@ trait MasterCvFixtures
 
     protected function parser(): MasterCvParser
     {
-        return new MasterCvParser(new RoleParser);
+        return new MasterCvParser(new RoleParser, new DeriveSkillsFromTechStacks);
     }
 }

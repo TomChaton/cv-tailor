@@ -49,7 +49,8 @@ class LoadMasterCvVersionTest extends TestCase
                 $this->assertSame(2, $context['projects']);
                 $this->assertSame(25, $context['achievements']);
                 $this->assertSame(7, $context['sub_bullets']);
-                $this->assertSame(44, $context['skills']);
+                $this->assertSame(44, $context['skills_written']);
+                $this->assertSame(0, $context['skills_derived']);
 
                 return true;
             }));

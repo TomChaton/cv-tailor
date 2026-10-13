@@ -1,30 +1,39 @@
 <?php
 
-namespace App\MasterCv\Lint;
-
-use App\MasterCv\Skill;
+namespace App\MasterCv;
 
 /**
- * The technologies the skills index knows about, and whether it covers a term
- * written in a role's tech stack.
+ * The technologies a hand-written skills index already knows about.
  *
- * The two are written by the same person from opposite directions and never in
- * the same words: the index says "AWS SQS (incl. dead-letter replay)" where a
- * stack says "SQS", and "PHP 7.x (7.0, 7.4)" where a stack says "PHP 7.4
- * (legacy)". So matching is deliberately generous:
+ * It answers one question: does the index have a row for the technology this
+ * tech-stack line names? A yes means nothing is derived for it and the
+ * author's own row stands.
+ *
+ * The index and the stacks are never written in the same words — the index
+ * says "AWS SQS (incl. dead-letter replay)" where a stack says "SQS", and
+ * "PHP 7.x (7.0, 7.4)" where a stack says "PHP 7.4 (legacy)" — so matching is
+ * deliberately generous:
  *
  * - a skill contributes its name without any parenthetical, plus each
  *   parenthetical's contents, as separate aliases — that is where a name's
  *   short forms are written down;
  * - a term matches an alias when the term's words are among the alias's, in
  *   any order, which is what makes "SQS" the same technology as "AWS SQS";
- * - failing that, version numbers are dropped from both sides. This check asks
+ * - failing that, version numbers are dropped from both sides. The question is
  *   whether the index knows the technology at all. Whether a version is right
  *   for a role is a different question, asked of generated output by a check
  *   of its own.
  *
- * A term in two halves (`MySQL / AWS Aurora`) is covered only when both halves
+ * A term in two halves (`MySQL / AWS Aurora`) is known only when both halves
  * are.
+ *
+ * **The generosity is calibrated for this question and must not be carried
+ * into a validator.** Matching is subset-based, so across a few hundred rows
+ * the union of words is large enough that a single-word term is found readily,
+ * including a word that appears in a row for a negative reason. Erring towards
+ * "already known" costs a derived row nobody needed; erring the same way when
+ * asking whether a reworded bullet may claim a technology would cost the
+ * guarantee.
  */
 final class SkillVocabulary
 {
@@ -41,14 +50,14 @@ final class SkillVocabulary
     {
         foreach ($skills as $skill) {
             foreach (self::aliasesFor($skill->name) as $alias) {
-                $tokens = self::tokens($alias);
+                $tokens = SkillName::tokens($alias);
 
                 if ($tokens === []) {
                     continue;
                 }
 
                 $this->aliases[] = $tokens;
-                $this->versionless[] = self::withoutVersions($tokens);
+                $this->versionless[] = SkillName::withoutVersions($tokens);
             }
         }
     }
@@ -101,7 +110,7 @@ final class SkillVocabulary
 
     private function coversOne(string $term): bool
     {
-        $tokens = self::tokens($term);
+        $tokens = SkillName::tokens($term);
 
         if ($tokens === []) {
             return true;
@@ -113,7 +122,7 @@ final class SkillVocabulary
             }
         }
 
-        $versionless = self::withoutVersions($tokens);
+        $versionless = SkillName::withoutVersions($tokens);
 
         // A bare version number is not a technology, so there is nothing for
         // the index to be missing.
@@ -143,50 +152,5 @@ final class SkillVocabulary
         }
 
         return true;
-    }
-
-    /**
-     * @return list<string>
-     */
-    private static function tokens(string $text): array
-    {
-        $text = mb_strtolower(trim($text));
-
-        // Dots, pluses and hashes stay inside a token: `node.js`, `c++` and
-        // `c#` are names, not punctuation.
-        $text = (string) preg_replace('/[^\p{L}\p{N}.+#]+/u', ' ', $text);
-
-        $tokens = array_filter(
-            preg_split('/\s+/u', $text) ?: [],
-            static fn (string $token): bool => trim($token, '.') !== '',
-        );
-
-        return array_values(array_map(self::singular(...), $tokens));
-    }
-
-    /**
-     * Both sides are folded the same way, so this only ever makes a plural and
-     * its singular the same word: "affiliate network feeds" and "affiliate
-     * network feed integration" are the same technology written twice.
-     */
-    private static function singular(string $token): string
-    {
-        if (mb_strlen($token) > 3 && str_ends_with($token, 's') && ! str_ends_with($token, 'ss')) {
-            return mb_substr($token, 0, -1);
-        }
-
-        return $token;
-    }
-
-    /**
-     * @param  list<string>  $tokens
-     * @return list<string>
-     */
-    private static function withoutVersions(array $tokens): array
-    {
-        return array_values(array_filter(
-            $tokens,
-            static fn (string $token): bool => preg_match('/^v?\d+(\.(\d+|x))*$/', $token) !== 1,
-        ));
     }
 }

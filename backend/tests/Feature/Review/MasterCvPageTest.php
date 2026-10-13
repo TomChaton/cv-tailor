@@ -50,7 +50,8 @@ class MasterCvPageTest extends TestCase
             ->assertSee($this->parseFixture()->hash())
             ->assertSee(__('master-cv.counts.roles'))
             ->assertSee(__('master-cv.counts.sub_bullets'))
-            ->assertSeeInOrder([__('master-cv.counts.skills'), (string) $counts['skills']]);
+            ->assertSeeInOrder([__('master-cv.counts.skills_written'), (string) $counts['skills_written']])
+            ->assertSee(__('master-cv.counts.skills_derived'));
     }
 
     public function test_a_cv_that_passes_lint_shows_no_problems(): void
@@ -75,7 +76,6 @@ class MasterCvPageTest extends TestCase
             'a missing ID' => ['broken-missing-id.md', 'ids', 'line 42'],
             'a missing section' => ['broken-missing-section.md', 'sections', ''],
             'a skills row naming no role' => ['broken-skill-names-no-role.md', 'skills_index_references', 'line 32'],
-            'a stack entry missing from the index' => ['broken-tech-stack-not-in-index.md', 'tech_stack_coverage', 'line 46'],
         ];
     }
 

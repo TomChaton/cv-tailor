@@ -13,6 +13,11 @@ use Illuminate\Support\Str;
  * hundred units out of the set the author has to maintain by hand. The cost is
  * bounded and accepted: reword a skill and an old revision cites an ID that no
  * longer resolves, the validators say so, and rendered PDFs are untouched.
+ *
+ * A row the author did not write is marked `derived`, which is counted and
+ * nothing else: an ID is a slug of the name either way, so nothing downstream
+ * can tell the two apart, and the serialised form does not say — a key on
+ * every row would change the prompt's facts for no gain.
  */
 final readonly class Skill
 {
@@ -27,9 +32,10 @@ final readonly class Skill
         public bool $selectable,
         public bool $verbatimOnly,
         public array $markers,
+        public bool $derived = false,
     ) {}
 
-    public static function make(string $name, ?string $whereUsed, int $line): self
+    public static function make(string $name, ?string $whereUsed, int $line, bool $derived = false): self
     {
         $markers = ContentMarker::detect($name.' '.($whereUsed ?? ''));
 
@@ -41,6 +47,7 @@ final readonly class Skill
             selectable: ! in_array(ContentMarker::Todo, $markers, true),
             verbatimOnly: in_array(ContentMarker::DoNotElaborate, $markers, true),
             markers: $markers,
+            derived: $derived,
         );
     }
 

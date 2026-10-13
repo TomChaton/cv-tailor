@@ -13,7 +13,10 @@ namespace App\MasterCv;
  */
 class MasterCvParser
 {
-    public function __construct(private readonly RoleParser $roles) {}
+    public function __construct(
+        private readonly RoleParser $roles,
+        private readonly DeriveSkillsFromTechStacks $derive,
+    ) {}
 
     public function parse(string $content): ParsedMasterCv
     {
@@ -58,6 +61,11 @@ class MasterCvParser
                 Section::IndependentProjects => $independentProjects = $this->roles($lines, RoleKind::Independent, $policy),
             };
         }
+
+        // The index is completed from the stacks once the whole file is read:
+        // either section may come first, and a technology's row depends on
+        // both.
+        $skillGroups = $this->derive->handle($skillGroups, [...$roles, ...$independentProjects]);
 
         return new ParsedMasterCv(
             frontMatter: $frontMatter,

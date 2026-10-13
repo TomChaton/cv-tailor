@@ -5,8 +5,8 @@ namespace App\MasterCv\Lint;
 use App\MasterCv\Lint\Checks\BlockLabelsAreRecognised;
 use App\MasterCv\Lint\Checks\IdsArePresentAndUnique;
 use App\MasterCv\Lint\Checks\RecognisedSectionsPresent;
+use App\MasterCv\Lint\Checks\SkillNamesAreDistinct;
 use App\MasterCv\Lint\Checks\SkillsIndexNamesRealRoles;
-use App\MasterCv\Lint\Checks\TechStackIsInSkillsIndex;
 use App\MasterCv\ParsedMasterCv;
 
 /**
@@ -22,7 +22,7 @@ class MasterCvLinter
         private readonly RecognisedSectionsPresent $sections,
         private readonly IdsArePresentAndUnique $ids,
         private readonly SkillsIndexNamesRealRoles $skillsIndex,
-        private readonly TechStackIsInSkillsIndex $techStack,
+        private readonly SkillNamesAreDistinct $skillNames,
         private readonly BlockLabelsAreRecognised $blockLabels,
     ) {}
 
@@ -46,7 +46,7 @@ class MasterCvLinter
             $this->sections,
             $this->ids,
             $this->skillsIndex,
-            $this->techStack,
+            $this->skillNames,
             $this->blockLabels,
         ];
     }

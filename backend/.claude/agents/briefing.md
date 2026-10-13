@@ -90,6 +90,9 @@ as the starter template for other users.
   where it was used, and a plain bullet list — and both are supported, because
   both are what people write. A list row often says nothing about where the
   skill was used, and a row claiming no evidence has none to check.
+- **A row for a technology a tech stack already names is optional**, because it
+  is derived. Writing one anyway is how the author says what the derivation
+  cannot, and a hand-written row always wins. See below.
 - **Unknown-detail markers** — `TODO`, and phrases such as "not recorded" or
   "do not elaborate" — are part of the format. Content carrying `TODO` is never
   selectable. Content carrying "do not elaborate" may be used verbatim only.
@@ -155,40 +158,89 @@ would quietly lose a section the author wrote. Anything but an explicit no
 reads as yes, for the same reason. Letting the model choose would be a schema
 change and a `prompt_version` bump.
 
+### The index is derived from the tech stacks, not checked against them
+
+Every technology a role's or project's tech stack names becomes a skill, with
+"where used" naming the roles whose stacks name it. A technology in a stack is
+already a statement that it was used in that role, so a row saying so restates
+it — and two statements of one fact drift, where a derivation cannot disagree
+with itself. It also widens the vocabulary the technology-to-role check is
+built from, which is the index: a technology in a stack and in no row was
+invisible to that check, so a reworded bullet mentioning it failed for the
+wrong reason.
+
+**A hand-written row wins.** Where the index already knows a technology, that
+row stands and nothing is derived beside it. That is what makes this cost an
+existing CV nothing, and it keeps the index the place to say what a derivation
+cannot: a different name, a grouping, a mention of where the skill was used
+beyond the stacks.
+
+**Whether the index already knows a technology is matched generously**, because
+the index and the stacks are never written in the same words — the index says
+"AWS SQS (incl. dead-letter replay)" where a stack says "SQS", and
+"PHP 7.x (7.0, 7.4)" where a stack says "PHP 7.4 (legacy)". A skill contributes
+its name without parentheticals, its parentheticals' contents and the whole row
+as aliases; a term matches when its words are among an alias's; failing that,
+version numbers are dropped from both sides. The question is whether the index
+knows the technology at all. Whether a version is right for a role is a
+different question, asked of generated output by a check of its own.
+
+**That generosity must not be carried into a validator.** Matching is
+subset-based, so across a few hundred rows the union of words is large enough
+that a single-word term is found readily — including a word that appears in a
+row for a negative reason. Erring towards "already known" costs a derived row
+nobody needed; erring the same way when asking whether a reworded bullet may
+claim a technology costs the guarantee. **The technology-to-role check must not
+reuse this vocabulary unexamined.**
+
+**A derived row is identified the way a written one is**, by a slug of its
+name, so nothing downstream can tell the two apart and the ID a technology gets
+does not depend on whether somebody wrote its row. Rows are keyed on that ID,
+so a technology two stacks spell the same way is one skill naming both roles,
+and a derived row can never collide with an ID the document already holds. Two
+stacks spelling it differently are two skills, which lint says out loud and
+never refuses.
+
+**A derived row takes its grouping from the label on its tech-stack line**, so
+`- Languages: PHP, TypeScript` files PHP under Languages, and a label matching
+a heading the index already carries joins it rather than opening a second one
+beside it. Labels are compared without case or punctuation — `Data`, `data` and
+`Data / search` are one shelf — and where two spellings mean one group the
+first encountered names it. An entry on an unlabelled line goes to a single
+catch-all.
+
+**A derived row says when its evidence is an independent project**, the way the
+author's own rows mark it. A row naming only the project would offer the model
+a technology with nothing to say it was not commercial work, and the CV's own
+rules turn on that distinction.
+
+**The serialised parse does not record which rows were derived.** A key on
+every row would be prompt text bought for nothing: the claim is the same either
+way, and the distinction is only worth counting.
+
 ### Linting
 
 `php artisan cv:lint` checks a master CV before it is used, and every
 generation run refuses a CV that fails it:
 
 - IDs present on every selectable unit, unique, and well-formed.
-- Every skills-index "where used" entry names a role or project that exists,
-  and every technology in a role's tech stack appears in the skills index.
-  The index and the stacks state the same facts from opposite directions and
-  will drift; the linter is what stops that.
+- Every skills-index "where used" entry names a role or project that exists.
+  The author wrote the cell, so they meant something by it; a derived row names
+  a real role by construction.
 - Recognised sections present.
 
 A finding is a **problem** or a **note**, and only problems fail the lint.
 Notes are for what the author chose and the tool merely does not know: a
 one-off block label, a part of a "where used" cell that names nothing while the
-rest of it names a real role.
+rest of it names a real role, two skill names that say the same thing twice.
 
-**The index and the stacks are never written in the same words** — the index
-says "AWS SQS (incl. dead-letter replay)" where a stack says "SQS" — so the
-coverage check matches generously: a skill contributes its name without
-parentheticals, its parentheticals' contents, and the whole row as aliases; a
-term matches when its words are among an alias's; and failing that, version
-numbers are dropped from both sides. The question this check asks is whether
-the index knows the technology at all. Whether a version is right for a role is
-a different question, asked of generated output by a check of its own.
-
-**That generosity is calibrated for a lint and must not be carried into a
-validator.** Matching is subset-based, so across a few hundred rows the union
-of words is large enough that a single-word term passes readily — including a
-word that appears in a row for a negative reason. That is the right trade for
-asking whether the index knows a technology at all, and the wrong trade for
-asking whether a reworded bullet may claim one: **the technology-to-role check
-on generated output must not reuse this vocabulary unexamined.** A loose
-vocabulary costs tidiness in a lint and costs the guarantee in a validator.
+**Near-duplicate skill names are a note and never a failure.** Two names that
+differ only in case, punctuation, a plural or a version suffix may be one skill
+written twice, and sometimes they are two things — only the author knows which,
+so the lint says it and moves on. A version makes two names one only when the
+other side pins none: "PHP 7.x (7.0, 7.4)" and "PHP 8.x (8.3)" are two
+deliberate statements, and reporting them would make the check noise on any CV
+spanning a decade.
 
 Lint output names the line and the problem. It is written for the CV's author,
 not for a developer. The exit code is non-zero on failure, so generation and
@@ -260,9 +312,11 @@ nobody would want to edit is a template nobody adopts. In it:
 `tests/Fixtures/master-cv/minimal.md` is the smallest CV that passes lint, and
 `tests/Fixtures/master-cv/broken-*.md` are variants of it that each differ by
 one line: a duplicate ID, a missing ID, a skills row naming a role that does
-not exist, a tech-stack entry missing from the index, a missing section. One
-defect per file, one line apart from a file that passes, so what a check is
-reacting to is visible in a diff.
+not exist, a missing section. One defect per file, one line apart from a file
+that passes, so what a check is reacting to is visible in a diff.
+`tests/Fixtures/master-cv/derives-a-skill.md` is one line apart from it too — a
+tech-stack entry with no row of its own — and passes, because that line is a
+skill rather than a defect.
 
 **The fictional CV is byte-identical to what `cv:id` writes from it with its
 IDs stripped**, which is what makes it a starter template rather than only a
@@ -962,10 +1016,11 @@ All seven block.
   the one crossing that is never legitimate is this one. Two overlapping checks
   are cheaper than one with a gap.
 
-### The lint's skill vocabulary is not reused
+### The index's skill vocabulary is not reused
 
-Its matching is generous by design, and across a few hundred rows the union of
-words is large enough that almost any single word is found somewhere. The
+The matching that decides whether a technology already has a row is generous by
+design, and across a few hundred rows the union of words is large enough that
+almost any single word is found somewhere. The
 validator matches instead against *one role's* handful of stack entries, each
 read as a set of words, so the generosity that lets "Slim" stand for "Slim
 Framework" cannot leak between roles. A parenthetical in the index becomes
@@ -1157,6 +1212,10 @@ and the two actions worth having.
   and naming it makes it findable rather than letting it pass as ordinary.
   Reported exceptions carry `exception.reported`, because an exception is a log
   line like any other.
+- **`master_cv.parsed` counts written and derived skills apart.** A single
+  total would hide the symptom that matters — a derivation producing a wildly
+  different number from one parse to the next — because every row the index
+  loses, the stacks give back.
 - **The heartbeat timestamp lives in the cache**, under a key per process. It
   has to outlive the process that wrote it and be readable from a different
   container, and the cache table is already part of Laravel's own schema, so it

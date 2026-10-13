@@ -65,10 +65,13 @@ class CvLintCommandTest extends TestCase
      */
     public function test_its_output_is_written_for_the_cvs_author(): void
     {
-        Artisan::call('cv:lint', ['path' => $this->fixturePath('master-cv/broken-tech-stack-not-in-index.md')]);
+        Artisan::call('cv:lint', ['path' => $this->fixturePath('master-cv/broken-skill-names-no-role.md')]);
         $output = Artisan::output();
 
-        $this->assertStringContainsString('"Redis" is in this tech stack but not in the skills index', $output);
+        $this->assertStringContainsString(
+            '"Where used" for "PHP 8.x (8.3)" names no role or project in this file.',
+            $output,
+        );
         $this->assertStringNotContainsString('App\\', $output);
         $this->assertStringNotContainsString('{"', $output);
     }
