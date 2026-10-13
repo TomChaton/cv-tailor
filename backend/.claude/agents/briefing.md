@@ -194,6 +194,15 @@ Lint output names the line and the problem. It is written for the CV's author,
 not for a developer. The exit code is non-zero on failure, so generation and
 the scheduler can both rely on it.
 
+**A finding states the problem and never the remedy.** The same words are read
+in a terminal and in the review UI, and what to do about a problem differs
+between them: a screen with a button for the fix does not want advice on
+running a command instead, and a message that carries the advice anyway puts it
+on both. So a problem with a known fix **names** the remedy, each surface
+decides what it has to say about it, and a remedy is offered once however many
+findings call for it. `cv:lint` owns the command's wording, because a terminal
+has no button; the master CV page, which has one, says nothing.
+
 ### Bootstrapping the IDs
 
 `php artisan cv:id <source> [destination]` writes the IDs a CV is missing and
@@ -1101,6 +1110,43 @@ It shows:
   wording differs.
 - Actions: regenerate with instructions, edit (creating a child), generate now,
   mark applied (recording `applied_revision_id`), discard.
+
+### A page's content is schema components, not a template
+
+Filament ships its panel CSS prebuilt from its own class names, and this
+application has no front-end build to add to it. A hand-written Blade template
+therefore has no utility classes to reach for: everything a page renders is
+assembled from schema components, which carry the styles that exist.
+
+### The master CV page
+
+The master CV is the part of the system its owner touches most, so it has a
+page: what the application makes of the file, every lint finding against it,
+and the two actions worth having.
+
+- **It reports and offers; it does not author.** The CV is a Markdown file its
+  owner edits for years in an editor, and the mount is read-only by decision —
+  so "add missing IDs" hands back a corrected copy to **download**, exactly as
+  `cv:id` does, and the author reads a diff and adopts it themselves. A page
+  that wrote to the CV would be a second editing surface for a document that
+  already has one, and would cost the read-only mount.
+- **It re-reads on demand**, because the file changes outside the application:
+  the parse is made afresh on every request and never remembered, so a CV saved
+  in an editor is seen without a restart, and "re-check" is a button whose job
+  is to cause that read.
+- **Reporting on a CV is not generating from one.** The page's read applies the
+  same gate as generation — a CV that fails lint never becomes a
+  `master_cv_versions` row — so looking at a broken CV cannot leave behind
+  something a revision could claim it was built from.
+- **A file the application cannot read is an outcome, not an exception.** The
+  page names what is at the path, because a directory and a permissions problem
+  send its reader somewhere different, and `cv:status` answers that question
+  from the same place so the two surfaces cannot disagree.
+- **Lint's own findings are the exception to the catalogue rule.** They are
+  written for the CV's author and come from the linter; the page prints them as
+  it is given them, and supplies only the heading of the check that raised each
+  one. It prints no remedy: a finding names what fixes it and this page's
+  answer to that is a button, not a sentence.
 
 ## Observability
 

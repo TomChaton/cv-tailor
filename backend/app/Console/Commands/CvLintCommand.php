@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\MasterCv\Lint\Finding;
+use App\MasterCv\Lint\Remedy;
 use App\MasterCv\MasterCvIsNotUsable;
 use App\MasterCv\ReadMasterCv;
 use Illuminate\Console\Command;
@@ -63,9 +64,25 @@ class CvLintCommand extends Command
             '  <fg=red>%s to fix before this CV can be generated from.</>',
             $this->plural(count($report->problems()), 'problem'),
         ));
+
+        // A finding names what is wrong and leaves what to do about it to
+        // whoever is reading. In a terminal that is a command; the review UI
+        // has a button for the same thing and says nothing.
+        foreach ($report->remedies() as $remedy) {
+            $this->newLine();
+            $this->line('  '.OutputFormatter::escape($this->remedy($remedy)));
+        }
+
         $this->newLine();
 
         return self::FAILURE;
+    }
+
+    private function remedy(Remedy $remedy): string
+    {
+        return match ($remedy) {
+            Remedy::AddMissingIds => 'Run "php artisan cv:id" to write the IDs that are missing.',
+        };
     }
 
     private function finding(Finding $finding, string $colour): void

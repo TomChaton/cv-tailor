@@ -2,6 +2,7 @@
 
 namespace App\Observability\Status;
 
+use App\MasterCv\MasterCvState;
 use App\MasterCv\ReadMasterCv;
 use Carbon\CarbonImmutable;
 use Illuminate\Filesystem\Filesystem;
@@ -22,7 +23,7 @@ class MasterCvSection implements StatusSection
 
     public function rows(): array
     {
-        $state = $this->state();
+        $state = MasterCvState::at($this->files, $this->path);
 
         $rows = [
             'path' => $this->path,
@@ -68,22 +69,5 @@ class MasterCvSection implements StatusSection
                 ? 'passing'
                 : $problems.' problem'.($problems === 1 ? '' : 's').': run php artisan cv:lint',
         ];
-    }
-
-    private function state(): MasterCvState
-    {
-        if (! $this->files->exists($this->path)) {
-            return MasterCvState::NotFound;
-        }
-
-        if (! $this->files->isFile($this->path)) {
-            return $this->files->isDirectory($this->path)
-                ? MasterCvState::Directory
-                : MasterCvState::NotRegularFile;
-        }
-
-        return $this->files->isReadable($this->path)
-            ? MasterCvState::Readable
-            : MasterCvState::NotReadable;
     }
 }
