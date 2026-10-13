@@ -33,6 +33,32 @@ class MasterCvLinterTest extends TestCase
         $this->assertTrue($report->passes(), $this->describe($report));
     }
 
+    public function test_a_cv_of_labelled_and_wrapped_bullets_is_fit_to_generate_from(): void
+    {
+        $report = $this->lint('master-cv/labelled-and-wrapped.md');
+
+        $this->assertTrue($report->passes(), $this->describe($report));
+    }
+
+    /**
+     * A report against a line whose ID is further down the bullet sends the
+     * author to edit a line that is already right, so the line named is the
+     * one the bullet starts on and the ID is looked for across the whole of it.
+     */
+    public function test_a_missing_id_is_reported_against_the_line_the_bullet_starts_on(): void
+    {
+        $cv = $this->parser()->parse(str_replace(
+            ' {#wrenbury-freight.2}',
+            '',
+            $this->fixture('master-cv/labelled-and-wrapped.md'),
+        ));
+
+        $report = $this->linter()->lint($cv);
+
+        $this->assertSame(['ids' => 1], $report->problemsByCheck());
+        $this->assertSame(48, $report->problems()[0]->line);
+    }
+
     /**
      * Each broken variant differs from the minimal CV by one line, so each
      * raises exactly one problem and names the check that found it.

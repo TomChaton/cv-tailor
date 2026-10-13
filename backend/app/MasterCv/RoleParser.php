@@ -11,6 +11,9 @@ namespace App\MasterCv;
  * as an achievement container and reported by lint, never rejected: a format
  * that refuses a heading its author invented is a format its author stops
  * maintaining.
+ *
+ * **An ID is what makes a unit selectable**, and that is also what tells an
+ * achievement apart from a metadata field, which never carries one.
  */
 class RoleParser
 {
@@ -90,10 +93,17 @@ class RoleParser
             $bullet = Markdown::bullet($line->text);
             $body = $bullet['text'] ?? $text;
 
+            // An ID is what makes a unit selectable, and a metadata field
+            // never carries one. So a labelled bullet that has an ID is an
+            // achievement whose text opens with a bold lead-in — ordinary CV
+            // writing — and not a field whose name happens to be a sentence.
+            $isSelectableUnit = $bullet !== null && preg_match(Markdown::ID, $body) === 1;
+
             // A bold label with a value on the same line is metadata wherever
             // it appears — as a bullet in the block above the first label, or
             // as a standalone line between blocks.
-            if (preg_match(Markdown::LABELLED_VALUE, $body, $matches) === 1
+            if (! $isSelectableUnit
+                && preg_match(Markdown::LABELLED_VALUE, $body, $matches) === 1
                 && ($inMetadata || $bullet === null)) {
                 $label = trim($matches['label']);
                 $value = trim($matches['value']);
@@ -133,7 +143,6 @@ class RoleParser
                 continue;
             }
 
-            [$bulletText, $bulletId] = Markdown::splitId($bullet['text']);
             $indent = $bullet['indent'];
 
             $parent = null;
@@ -151,8 +160,9 @@ class RoleParser
             }
 
             $nodes[] = [
-                'id' => $bulletId,
-                'text' => $bulletText,
+                // Still carrying its ID attribute: see below.
+                'id' => null,
+                'text' => $bullet['text'],
                 'line' => $line->number,
                 'block' => $block,
                 'indent' => $indent,
@@ -161,6 +171,16 @@ class RoleParser
 
             $openByIndent[$indent] = array_key_last($nodes) ?? 0;
             ksort($openByIndent);
+        }
+
+        // The ID is split off only now that every continuation line has been
+        // joined onto the bullet it continues, so a bullet the author wrapped
+        // — carrying its `{#id}` onto the second line — reads as an unwrapped
+        // one does. Splitting per line would leave the ID buried in the text
+        // and the unit with none, and nothing downstream could tell the
+        // difference between that and an ID the author never wrote.
+        foreach ($nodes as $index => $node) {
+            [$nodes[$index]['text'], $nodes[$index]['id']] = Markdown::splitId($node['text']);
         }
 
         $dates = $this->dates($metadata);
