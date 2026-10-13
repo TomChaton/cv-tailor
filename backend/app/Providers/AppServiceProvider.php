@@ -10,6 +10,7 @@ use App\Http\Middleware\LimitRequestBody;
 use App\Http\TrustedProxies;
 use App\MasterCv\ReadMasterCv;
 use App\Observability\Listeners\RecordWorkerHeartbeat;
+use App\Observability\Status\LlmSection;
 use App\Observability\Status\MasterCvSection;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Http\Middleware\TrustProxies;
@@ -55,6 +56,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->when(BuildGenerationRequest::class)
             ->needs('$maxTokens')
             ->give(fn (): int => Config::integer('cv.llm.max_output_tokens.generation'));
+
+        $this->app->when(LlmSection::class)
+            ->needs('$apiKey')
+            ->give(fn (): string => Config::string('cv.llm.api_key'));
 
         $this->app->when(PollBatches::class)
             ->needs('$staleAfterMinutes')

@@ -22,6 +22,7 @@ use App\Llm\LlmFailure;
 use App\Llm\LlmRequest;
 use App\Llm\LlmResponse;
 use App\Llm\TokenUsage;
+use Closure;
 use Generator;
 use InvalidArgumentException;
 
@@ -31,14 +32,27 @@ use InvalidArgumentException;
  * It uses the official SDK rather than hand-rolled HTTP, and it is the only
  * class in the application that names an SDK type. A second provider is a
  * second implementation of `LlmClient`, not a refactor of anything here.
+ *
+ * **The SDK client is built on first use.** Scheduled work resolves this class
+ * to find out whether it has anything to do, and a run with nothing to do must
+ * not need credentials: building the SDK client eagerly makes an instance
+ * whose API key is not set yet report a stack trace every few minutes, on runs
+ * that were never going to call anybody. Holding a factory keeps the cost
+ * where the call is, and keeps ordinary constructor injection for every caller.
  */
-final readonly class AnthropicLlmClient implements LlmClient
+final class AnthropicLlmClient implements LlmClient
 {
+    private ?Client $sdk = null;
+
+    /**
+     * @param  Closure(): Client  $sdkFactory  Resolved on the first call that
+     *                                         needs the provider, and once.
+     */
     public function __construct(
-        private Client $sdk,
-        private AnthropicRequestFactory $requests,
-        private CostCalculator $cost,
-        private LlmEvents $events,
+        private readonly Closure $sdkFactory,
+        private readonly AnthropicRequestFactory $requests,
+        private readonly CostCalculator $cost,
+        private readonly LlmEvents $events,
     ) {}
 
     public function submitBatch(array $requests): string
@@ -59,7 +73,7 @@ final readonly class AnthropicLlmClient implements LlmClient
         $model = implode(',', array_keys($models));
 
         try {
-            $batch = $this->sdk->messages->batches->create(requests: $payload);
+            $batch = $this->sdk()->messages->batches->create(requests: $payload);
         } catch (APIException $exception) {
             throw $this->fail($model, $exception);
         }
@@ -72,7 +86,7 @@ final readonly class AnthropicLlmClient implements LlmClient
     public function pollBatch(string $providerBatchId): BatchState
     {
         try {
-            $batch = $this->sdk->messages->batches->retrieve($providerBatchId);
+            $batch = $this->sdk()->messages->batches->retrieve($providerBatchId);
         } catch (APIException $exception) {
             throw $this->fail(null, $exception, $providerBatchId);
         }
@@ -98,7 +112,7 @@ final readonly class AnthropicLlmClient implements LlmClient
     public function fetchResults(string $providerBatchId): Generator
     {
         try {
-            $stream = $this->sdk->messages->batches->resultsStream($providerBatchId);
+            $stream = $this->sdk()->messages->batches->resultsStream($providerBatchId);
         } catch (APIException $exception) {
             throw $this->fail(null, $exception, $providerBatchId);
         }
@@ -113,7 +127,7 @@ final readonly class AnthropicLlmClient implements LlmClient
         $params = $this->requests->params($request);
 
         try {
-            $message = $this->sdk->messages->create(
+            $message = $this->sdk()->messages->create(
                 maxTokens: $params->maxTokens,
                 messages: $params->messages,
                 model: $params->model,
@@ -129,6 +143,11 @@ final readonly class AnthropicLlmClient implements LlmClient
         $this->events->request($request->purpose, $response);
 
         return $response;
+    }
+
+    private function sdk(): Client
+    {
+        return $this->sdk ??= ($this->sdkFactory)();
     }
 
     private function result(MessageBatchIndividualResponse $line): BatchResult

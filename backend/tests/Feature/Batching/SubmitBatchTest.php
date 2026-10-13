@@ -8,7 +8,9 @@ use App\Batching\SubmissionOutcome;
 use App\Batching\SubmitBatch;
 use App\Batching\SubmitterHalt;
 use App\Generation\BuildGenerationRequest;
+use App\Llm\Anthropic\AnthropicLlmClient;
 use App\Llm\BatchRequest;
+use App\Llm\LlmClient;
 use App\Llm\LlmFailure;
 use App\Llm\LlmFailureKind;
 use App\Llm\Testing\FakeLlmClient;
@@ -18,6 +20,7 @@ use App\Models\Revision;
 use App\Observability\EventLogger;
 use App\Revisions\RevisionStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use RuntimeException;
 use Tests\Support\RecordingEventLogger;
 use Tests\Support\StubRequestBuilder;
 use Tests\TestCase;
@@ -190,6 +193,38 @@ class SubmitBatchTest extends TestCase
         $this->assertSame([1, 2], $outcome->haltedBy);
         $this->assertSame([], $this->fake()->submittedBatches());
         $this->assertDatabaseCount('llm_batches', 0);
+    }
+
+    /**
+     * A scheduled run resolves the submitter to find out whether it has
+     * anything to do, and a run with nothing to do must not need credentials.
+     * The provider's SDK client refuses to be built in the test environment,
+     * so a run that built one would raise here rather than pass.
+     */
+    public function test_a_run_with_nothing_pending_resolves_no_provider_client(): void
+    {
+        $this->instance(LlmClient::class, $this->app->make(AnthropicLlmClient::class));
+
+        $outcome = $this->submit()->handle();
+
+        $this->assertSame(0, $outcome->requestCount);
+        $this->assertSame([], $this->log->events());
+    }
+
+    /**
+     * The control for the test above: a run with work does reach the provider,
+     * so the one before it is passing for the right reason.
+     */
+    public function test_a_run_with_work_reaches_the_provider(): void
+    {
+        Revision::factory()->create();
+
+        $this->instance(LlmClient::class, $this->app->make(AnthropicLlmClient::class));
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('A test asked for a live LLM client.');
+
+        $this->submit()->handle();
     }
 
     /**

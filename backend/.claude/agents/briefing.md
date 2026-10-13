@@ -718,6 +718,17 @@ application that names a provider type.
 - **The batch API refuses some live-only request parameters**, so a request is
   built only from the fields the pinned SDK accepts on both paths. Which fields
   those are is read off the SDK after an upgrade, not assumed.
+- **The provider's SDK client is built on first use, not when the client is
+  injected.** Scheduled work resolves the client to find out whether it has
+  anything to do, and a run with nothing to do must not need credentials.
+  Built eagerly, an instance whose API key is not set yet reports a stack trace
+  every few minutes for runs that were never going to call anybody — which
+  teaches the owner to ignore the one channel that has to stay worth reading.
+  So the implementation holds a factory and resolves it once, at the first call
+  that needs the provider, and ordinary constructor injection stays right for
+  every caller. **Whether the key is set is a precondition, and a precondition
+  belongs in `cv:status`** beside the master CV's state, where it can be seen
+  and fixed. The key itself is never printed, in part or in whole.
 
 #### Cost and rates
 

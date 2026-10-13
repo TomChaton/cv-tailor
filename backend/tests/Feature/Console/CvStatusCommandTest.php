@@ -147,6 +147,34 @@ class CvStatusCommandTest extends TestCase
     }
 
     /**
+     * A precondition the owner can see and fix, rather than a stack trace from
+     * every scheduled run.
+     */
+    public function test_it_reports_whether_the_api_key_is_configured(): void
+    {
+        config(['cv.llm.api_key' => '']);
+
+        $this->assertSame(Command::SUCCESS, Artisan::call('cv:status'));
+
+        $output = Artisan::output();
+
+        $this->assertStringContainsString('api key', $output);
+        $this->assertStringContainsString('not set: put ANTHROPIC_API_KEY in .env', $output);
+    }
+
+    public function test_it_says_the_api_key_is_set_without_printing_any_of_it(): void
+    {
+        config(['cv.llm.api_key' => 'sk-ant-secret-value']);
+
+        $this->assertSame(Command::SUCCESS, Artisan::call('cv:status'));
+
+        $output = Artisan::output();
+
+        $this->assertStringContainsString('api key', $output);
+        $this->assertStringNotContainsString('secret', $output);
+    }
+
+    /**
      * An empty state has to be visible rather than absent: a status missing
      * from the report cannot be told apart from one that has been renamed.
      */
@@ -227,6 +255,7 @@ class CvStatusCommandTest extends TestCase
             ->expectsOutputToContain('Processes')
             ->expectsOutputToContain('Queue')
             ->expectsOutputToContain('Master CV')
+            ->expectsOutputToContain('LLM')
             ->expectsOutputToContain('Postings')
             ->expectsOutputToContain('Revisions')
             ->expectsOutputToContain('Batches')

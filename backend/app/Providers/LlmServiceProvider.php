@@ -9,6 +9,7 @@ use App\Llm\LlmClient;
 use App\Llm\LlmEvents;
 use App\Llm\ModelRegistry;
 use App\Llm\Testing\FakeLlmClient;
+use Closure;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\ServiceProvider;
@@ -62,6 +63,17 @@ class LlmServiceProvider extends ServiceProvider
 
             return new Client(apiKey: $apiKey);
         });
+
+        // The implementation holds a factory rather than the SDK client, so
+        // that resolving it costs nothing and a run with no work needs no
+        // credentials. Whether the key is set is reported by `cv:status`.
+        //
+        // Contextual binding on the type rather than on `$sdkFactory`: a
+        // parameter the container can see a class name for is resolved as a
+        // class, so a name-keyed binding would never be consulted.
+        $this->app->when(AnthropicLlmClient::class)
+            ->needs(Closure::class)
+            ->give(fn (Application $app): Closure => fn (): Client => $app->make(Client::class));
 
         $this->app->singleton(FakeLlmClient::class, fn (Application $app): FakeLlmClient => new FakeLlmClient(
             Config::string('cv.llm.fixture_path'),

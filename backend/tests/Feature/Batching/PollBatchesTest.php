@@ -5,6 +5,8 @@ namespace Tests\Feature\Batching;
 use App\Batching\LlmBatchState;
 use App\Batching\PollBatches;
 use App\Batching\SubmissionOutcome;
+use App\Llm\Anthropic\AnthropicLlmClient;
+use App\Llm\LlmClient;
 use App\Llm\LlmFailureKind;
 use App\Llm\Testing\FakeLlmClient;
 use App\Models\LlmBatch;
@@ -31,6 +33,18 @@ class PollBatchesTest extends TestCase
         $this->instance(EventLogger::class, $this->log);
 
         config(['cv.batches.stale_after_minutes' => 360]);
+    }
+
+    /**
+     * As for the submitter: a run with nothing open must not need credentials,
+     * and the SDK client refuses to be built in the test environment.
+     */
+    public function test_a_run_with_no_open_batches_resolves_no_provider_client(): void
+    {
+        $this->instance(LlmClient::class, $this->app->make(AnthropicLlmClient::class));
+
+        $this->assertSame(0, $this->poll()->handle()->open);
+        $this->assertSame([], $this->log->events());
     }
 
     public function test_a_batch_the_provider_is_still_working_on_is_left_alone(): void

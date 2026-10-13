@@ -1,6 +1,7 @@
 <?php
 
 use App\Observability\Status\BatchesSection;
+use App\Observability\Status\LlmSection;
 use App\Observability\Status\MasterCvSection;
 use App\Observability\Status\PostingsSection;
 use App\Observability\Status\ProcessesSection;
@@ -105,6 +106,7 @@ return [
         ProcessesSection::class,
         QueueSection::class,
         MasterCvSection::class,
+        LlmSection::class,
         PostingsSection::class,
         RevisionsSection::class,
         BatchesSection::class,
