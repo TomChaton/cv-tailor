@@ -44,6 +44,8 @@ services:
 
   worker:
     <<: *app
+    # `--timeout` and DB_QUEUE_RETRY_AFTER are one decision: the retry window
+    # has to be the longer of the two. Change either and change both.
     command: ['php', 'artisan', 'queue:work', '--queue=default', '--tries=3', '--timeout=600']
     depends_on:
       app:

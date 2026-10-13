@@ -767,6 +767,40 @@ log, no status. That is what lets the same checks be re-run over a revision that
 already exists, against a master CV version it was not generated from, to see
 what a change to the CV or to a check would say about it.
 
+### The links between the steps are queued jobs
+
+Storing a generated result queues validation, and validation with no blocking
+findings queues rendering. Nothing joins the steps by hand, and neither link is
+inline work: a revision arriving from a collected batch is already being handled
+in the worker, and an LLM call or a PDF conversion inside that job would make
+one slow revision hold up every other result the batch carried.
+
+Validation is queued where the result is stored rather than by the caller that
+stored it, so every path that produces output — a collected batch, a live call
+for a single revision — continues the chain without having to remember to.
+
+Whether to render is the render guard's answer and not the link's, since the
+guard is the one place that decides whether a revision may become a PDF. A
+revision the guard refuses stays `validated` and waits for the owner: nothing
+is dispatched, and `revision.validation_blocked` already says why.
+
+### Each link is idempotent
+
+**A duplicate dispatch is the ordinary consequence of a retried job**, so
+neither link may write twice. The checks are deterministic over a revision's
+output and the master CV version it names, so running them again writes the same
+findings over themselves rather than a second set of them, and a revision has
+one PDF at a path derived from its ID.
+
+A link that finds its revision complete does nothing at all. That is what keeps
+a retry off a revision which has since been rendered — a write there would be
+refused as a mutation of a complete revision — and it is why the guard reads the
+stored status rather than the one the job was dispatched with.
+
+Nothing in the chain reads where the content came from, so a manual edit takes
+the same path as a generated revision, for the same reason every check runs on
+every revision.
+
 ### A finding
 
 A finding records **the check that raised it, its severity, the master CV IDs
@@ -971,6 +1005,11 @@ A refused render — a blocking finding, or no validation at all — records no
 error on the revision. The verdict is already there in `validation_json`, and
 restating it would be the same fact in two places.
 
+**The queue does not try again.** The render job gets one attempt: a converter
+that is down is not up again seconds later, and three goes at it would bury the
+first failure under two more. The revision is left `validated` with its error
+recorded, which is where the owner sees it and acts on it.
+
 ### The template
 
 `resolved_json` → Blade → HTML → Gotenberg → PDF. **Section headings and every
@@ -1130,7 +1169,7 @@ the mounted CV, takes `--cv` for another file, and writes the PDF where it is
 told, which has to be somewhere writable. `docker compose cp` brings it out to
 be read.
 
-### Three things that are easy to get wrong
+### Things that are easy to get wrong
 
 - **The test suite supplies its own environment** and is handed no `.env`, so a
   result never depends on how a particular machine is configured. Test values
@@ -1143,3 +1182,10 @@ be read.
   is served the second time by the instance the first request built, and the
   swap appears to have been ignored. Install the double before the first
   request of the test.
+- **The queue's retry window and the worker's timeout are one decision in two
+  files.** `DB_QUEUE_RETRY_AFTER` is when the queue gives up on a reserved job
+  and offers it to another worker; `--timeout` on the worker's `queue:work` is
+  when a worker kills a job that is still running. The window has to be the
+  longer of the two, or a job that is merely slow is handed to a second worker
+  while the first is still working on it, and the pipeline's jobs are the slow
+  ones. Change either number and change both.

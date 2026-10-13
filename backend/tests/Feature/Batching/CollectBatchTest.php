@@ -7,6 +7,7 @@ use App\Batching\LlmBatchState;
 use App\Batching\SubmissionOutcome;
 use App\Batching\SubmitterHalt;
 use App\Jobs\ApplyBatchResult;
+use App\Jobs\ValidateGeneratedRevision;
 use App\Llm\LlmFailureKind;
 use App\Llm\Testing\FakeLlmClient;
 use App\Models\LlmBatch;
@@ -31,6 +32,10 @@ class CollectBatchTest extends TestCase
 
         $this->log = new RecordingEventLogger;
         $this->instance(EventLogger::class, $this->log);
+
+        // The chain beyond a stored result belongs to validation and is
+        // tested there. These tests stop at the hand-off.
+        Queue::fake([ValidateGeneratedRevision::class]);
     }
 
     public function test_it_dispatches_one_job_per_result_and_leaves_the_batch_open_until_they_are_applied(): void

@@ -5,6 +5,7 @@ namespace Tests\Feature\Batching;
 use App\Batching\LlmBatchState;
 use App\Batching\PollBatches;
 use App\Batching\SubmissionOutcome;
+use App\Jobs\ValidateGeneratedRevision;
 use App\Llm\Anthropic\AnthropicLlmClient;
 use App\Llm\LlmClient;
 use App\Llm\LlmFailureKind;
@@ -16,6 +17,7 @@ use App\Observability\EventLogger;
 use App\Revisions\RevisionStatus;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Tests\Support\RecordingEventLogger;
 use Tests\TestCase;
 
@@ -33,6 +35,10 @@ class PollBatchesTest extends TestCase
         $this->instance(EventLogger::class, $this->log);
 
         config(['cv.batches.stale_after_minutes' => 360]);
+
+        // The chain beyond a stored result belongs to validation and is
+        // tested there. These tests stop at the hand-off.
+        Queue::fake([ValidateGeneratedRevision::class]);
     }
 
     /**

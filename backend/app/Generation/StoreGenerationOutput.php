@@ -2,24 +2,34 @@
 
 namespace App\Generation;
 
+use App\Jobs\ValidateGeneratedRevision;
 use App\Llm\LlmResponse;
 use App\Models\Revision;
 use App\Revisions\RevisionStatus;
+use Illuminate\Contracts\Bus\Dispatcher;
 
 /**
- * Records what the model returned for a revision.
+ * Records what the model returned for a revision, and sets the rest of the
+ * pipeline going.
  *
  * The selection is stored as it came back, unresolved and unvalidated:
  * resolving it against the master CV and checking it are separate steps with
  * their own columns, and keeping the raw selection is what lets a validation
  * change be re-run over revisions that already exist.
  *
+ * Validation is queued from here rather than by the caller, so that every path
+ * that stores a result — a collected batch, a live call for a single revision —
+ * continues the chain without having to remember to.
+ *
  * `prompt_version` is not written here. It is recorded when the request is
  * built, which is when it becomes true of the revision.
  */
 class StoreGenerationOutput
 {
-    public function __construct(private readonly GenerationEvents $events) {}
+    public function __construct(
+        private readonly GenerationEvents $events,
+        private readonly Dispatcher $bus,
+    ) {}
 
     public function handle(Revision $revision, LlmResponse $response): Revision
     {
@@ -37,6 +47,8 @@ class StoreGenerationOutput
         ])->save();
 
         $this->events->stored($revision, $response, mb_strlen($response->text));
+
+        $this->bus->dispatch(new ValidateGeneratedRevision($revision));
 
         return $revision;
     }
