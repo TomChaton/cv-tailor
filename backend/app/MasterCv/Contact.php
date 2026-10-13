@@ -41,22 +41,63 @@ final readonly class Contact
     }
 
     /**
-     * Everything but the name, in the order the author wrote it.
+     * The fields the presentation policy names, in the order it names them.
      *
-     * The author decided what belongs in their contact section, so nothing here
-     * decides which of those fields is worth printing: a tool that ranked
-     * contact labels would be inventing a taxonomy its author never wrote.
+     * Which contact fields belong on a CV is the author's call and nobody
+     * else's, so it is a policy setting rather than a judgement made here.
      *
-     * @return array<string, string>
+     * **Labels are matched forgivingly of their exact wording**, the way
+     * section headings are: a policy naming `LinkedIn` finds a field written
+     * `LinkedIn profile`, and the reverse. **A named field the CV does not
+     * have is skipped** — the policy is a preference about a header, not an
+     * assertion about the file, and a CV without a phone number is a fact
+     * about the person rather than a defect.
+     *
+     * @param  list<string>  $labels
+     * @return array<string, string> Label as the author wrote it, to value.
      */
-    public function details(): array
+    public function only(array $labels): array
     {
-        return array_filter(
-            $this->fields,
-            static fn (string $value, string $label): bool => Markdown::normaliseHeading($label) !== 'name'
-                && trim($value) !== '',
-            ARRAY_FILTER_USE_BOTH,
-        );
+        $headings = [];
+
+        foreach ($this->fields as $label => $value) {
+            if (trim($value) !== '') {
+                $headings[$label] = Markdown::normaliseHeading($label);
+            }
+        }
+
+        $fields = [];
+
+        foreach ($labels as $wanted) {
+            $label = self::closest(Markdown::normaliseHeading($wanted), $headings);
+
+            if ($label !== null) {
+                $fields[$label] = $this->fields[$label];
+            }
+        }
+
+        return $fields;
+    }
+
+    /**
+     * @param  array<string, string>  $headings  Label as written, to its
+     *                                           normalised form.
+     */
+    private static function closest(string $wanted, array $headings): ?string
+    {
+        foreach ($headings as $label => $heading) {
+            if ($heading === $wanted) {
+                return $label;
+            }
+        }
+
+        foreach ($headings as $label => $heading) {
+            if (str_starts_with($heading, $wanted.' ') || str_starts_with($wanted, $heading.' ')) {
+                return $label;
+            }
+        }
+
+        return null;
     }
 
     /**

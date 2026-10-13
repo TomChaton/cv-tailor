@@ -102,9 +102,10 @@ only the presentation policy derived from it is of any use downstream.
 
 ### Presentation policy
 
-Generation needs settings the CV's facts do not hold: target length, default
-role modes, and which headline titles are on offer. These live in the CV's
-front matter so each user's policy travels with their CV.
+Generation and rendering need settings the CV's facts do not hold: target
+length, default role modes, which headline titles are on offer, which contact
+fields the CV's header carries, and whether awards and interests are shown.
+These live in the CV's front matter so each user's policy travels with their CV.
 
 **The policy is optional, and absent is the normal case**, so the defaults are
 the ordinary path rather than a fallback and their absence is never a lint
@@ -116,6 +117,29 @@ one, since a default of `full` cannot hide a role they wanted shown.
 defaults to `condensed`, before the second to `omitted`. Two are needed because
 the model may only promote a role above its default: with one cutoff `omitted`
 is unreachable and every role appears on every CV.
+
+**`contact_fields` names the contact labels the header prints**, in the order
+it prints them, and defaults to location, phone, email and LinkedIn. A contact
+section is the source of answers to application forms as much as it is a CV
+header: it holds a postal address, a right to work, a notice period, and the
+author's own labels often mark those as conditional ("use only if a form
+requires it"). A header is not where a form's answers belong, and the
+alternative — printing everything, or ranking labels in code — either clutters
+the page or invents a taxonomy the author never wrote. The name is the
+document's title, so it is not one of the four.
+
+Labels are **matched forgivingly of their exact wording**, the way section
+headings are, so a policy naming `LinkedIn` finds a field written `LinkedIn
+profile`. A named field the CV does not have is **skipped rather than
+reported**: the policy is a preference about a header, and a CV with no phone
+number is a fact about its author rather than a defect in the file.
+
+**`include_awards` and `include_interests` switch those sections, and both
+default to on.** The output schema has no field for either, so the model cannot
+select them and the only thing that can drop one is this key; a default of off
+would quietly lose a section the author wrote. Anything but an explicit no
+reads as yes, for the same reason. Letting the model choose would be a schema
+change and a `prompt_version` bump.
 
 ### Linting
 
@@ -194,8 +218,9 @@ the format, and doubles as the starter template for anyone else running this.
 It reads as a plausible CV rather than as a test matrix, because a template
 nobody would want to edit is a template nobody adopts. In it:
 
-- **Front matter** carries a populated presentation policy and keys the parser
-  ignores.
+- **Front matter** carries a populated presentation policy — including a
+  `contact_fields` list that is not the default and both section switches, one
+  on and one off — and keys the parser ignores.
 - **Skills index**: four table-form subsections and two list-form ones, one of
   which has rows with no "where used" at all.
 - **Roles**: one with a context block and ones without; metadata keys beyond
@@ -706,12 +731,10 @@ is read from the parse.
   unlikely: nothing can alter a number it has never seen. The headline is the
   one header field the model chooses, and it chooses among the CV's own headline
   titles; one the CV does not offer is dropped.
-- **Every contact field the author wrote is printed, in their order.** Ranking
-  contact labels by whether they belong on a CV would invent a taxonomy the
-  author never wrote; the section is theirs to edit.
-- **Awards and interests come from the parse too.** The output schema has no
-  field for either, so the model never touches them, and a section the author
-  wrote appearing on every CV is the lesser error against one silently lost.
+- **Which contact fields the header carries, and whether awards and interests
+  appear, are presentation policy** — `contact_fields`, `include_awards`,
+  `include_interests` — and so are the author's to set rather than anyone's to
+  infer. The reasoning is with the rest of the policy, above.
 - **An item the role does not own, or one the author marked `TODO`, is dropped
   rather than printed.** Validation blocks a revision that asks for either; a
   renderer that printed it anyway would be a second route onto the page.

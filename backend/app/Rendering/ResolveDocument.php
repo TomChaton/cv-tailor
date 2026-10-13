@@ -50,8 +50,8 @@ final class ResolveDocument
             skills: $this->skills($cv, $selection),
             roles: $roles,
             independentProjects: $projects,
-            awards: $cv->awards,
-            interests: $cv->interests,
+            awards: $cv->presentation->includeAwards ? $cv->awards : [],
+            interests: $cv->presentation->includeInterests ? $cv->interests : [],
             rolesOmitted: max(0, count($cv->allRoles()) - count($roles) - count($projects)),
         );
     }
@@ -60,7 +60,7 @@ final class ResolveDocument
     {
         $contact = [];
 
-        foreach ($cv->contact->details() as $label => $value) {
+        foreach ($cv->contact->only($cv->presentation->contactFields) as $label => $value) {
             $contact[] = ['label' => $label, 'value' => $value];
         }
 

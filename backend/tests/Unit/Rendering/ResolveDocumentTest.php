@@ -116,14 +116,22 @@ class ResolveDocumentTest extends TestCase
 
         $this->assertSame('Jordan Avery', $header->name);
         $this->assertSame('Senior Backend Engineer', $header->headline);
+        $this->assertSame('jordan.avery@example.com', $header->contact[1]['value']);
+    }
 
-        $labels = array_column($header->contact, 'label');
+    /**
+     * The policy names the fields and the order, so a contact section that
+     * doubles as the source of application-form answers does not put a postal
+     * address and a notice period in a CV header.
+     */
+    public function test_the_header_carries_the_contact_fields_the_policy_names(): void
+    {
+        $header = $this->resolve($this->selection())->header;
 
-        // Everything the author put in their contact section, in their order,
-        // and the name only once.
-        $this->assertNotContains('Name', $labels);
-        $this->assertSame(['Location', 'Phone', 'Email'], array_slice($labels, 0, 3));
-        $this->assertSame('07700 900123', $header->contact[1]['value']);
+        $this->assertSame(
+            ['Location', 'Email', 'LinkedIn'],
+            array_column($header->contact, 'label'),
+        );
     }
 
     /**
@@ -258,7 +266,11 @@ class ResolveDocumentTest extends TestCase
         );
     }
 
-    public function test_awards_and_interests_come_from_the_parse(): void
+    /**
+     * The output schema has no field for either, so the model never touches
+     * them: the policy is the only thing that can drop one.
+     */
+    public function test_awards_and_interests_come_from_the_parse_as_the_policy_asks(): void
     {
         $document = $this->resolve($this->selection());
 
@@ -266,7 +278,7 @@ class ResolveDocumentTest extends TestCase
             ['2019 — Ticketing Innovation Award, Northern Events Association (Northgate Tickets team)'],
             $document->awards,
         );
-        $this->assertCount(4, $document->interests);
+        $this->assertSame([], $document->interests);
     }
 
     public function test_the_resolved_document_leaves_no_ids_to_look_up(): void

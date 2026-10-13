@@ -165,7 +165,10 @@ class RenderRevisionTest extends TestCase
         $html = $this->converter()->lastHtml();
 
         $this->assertStringContainsString('Jordan Avery', $html);
-        $this->assertStringContainsString('07700 900123', $html);
+        $this->assertStringContainsString('jordan.avery@example.com', $html);
+        // The policy names the header's fields, so a postal address the author
+        // keeps for application forms stays off the page.
+        $this->assertStringNotContainsString('14 Beech Grove', $html);
         // The bold lead-in of a master CV bullet is emphasis, not asterisks on
         // a CV.
         $this->assertStringContainsString('<strong>Dispatch API (designed and built).</strong>', $html);

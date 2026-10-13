@@ -82,7 +82,7 @@ class MasterCvLinterTest extends TestCase
         ));
 
         $this->assertCount(3, $labels);
-        $this->assertSame(198, $labels[0]->line);
+        $this->assertSame(204, $labels[0]->line);
         $this->assertTrue($report->passes());
     }
 

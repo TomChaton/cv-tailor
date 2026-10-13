@@ -17,12 +17,11 @@ final readonly class ResolvedHeader
 {
     /**
      * @param  list<array{label: string, value: string}>  $contact  The contact
-     *                                                              section's
-     *                                                              remaining
-     *                                                              fields, in
-     *                                                              the order
-     *                                                              the author
-     *                                                              wrote them.
+     *                                                              fields the
+     *                                                              presentation
+     *                                                              policy names,
+     *                                                              in the order
+     *                                                              it names them.
      */
     public function __construct(
         public ?string $name,
