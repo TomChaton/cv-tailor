@@ -41,6 +41,28 @@ only thing that should routinely require a new build.
 - The payload follows the API contract in the system briefing. The client is
   generated from the backend's OpenAPI document and never hand-written.
 
+## The API client
+
+`src/api/schema.ts` is generated from the backend's committed OpenAPI document.
+`src/api/client.ts` wraps it: it takes a base URL and a bearer token as
+arguments, because nothing about a particular installation is built in, and
+reading those from storage is the options page's job.
+
+- **Every type in the client comes from the generated schema**, so the compiler
+  is what keeps the two sides in step: a field the backend adds or renames stops
+  the extension type-checking.
+- **Whether a posting is new is read from the response status**, which is where
+  the contract puts it, and handed to the caller as a flag. Nothing downstream
+  has to know an HTTP code to choose between the two things capture says.
+- **A failed send reports *why* in a form a caller can act on**: a thrown fetch
+  is a backend asleep or unreachable and the capture is worth keeping, where a
+  refusal is not. The sentence the owner reads is chosen by the caller from
+  `_locales`, never by the client.
+- **The document is mounted into the `node` container on its own**, rather than
+  by widening that container's mount to the repository root. The root holds
+  `.env` and the LLM API key in it, and neither has any business being readable
+  by something npm installed.
+
 ## Feedback
 
 - Success is shown as a badge or a minimal popup state: "Saved ✓". A duplicate
@@ -81,15 +103,19 @@ installed on the host.
 | --- | --- |
 | Install dependencies | `docker compose run --rm node npm ci` |
 | Build the unpacked extension | `docker compose run --rm node npm run build` |
+| Regenerate the API client | `docker compose run --rm node npm run api:client` |
 | Run the tests | `docker compose run --rm node npm test` |
 | Lint and type-check | `docker compose run --rm node npm run lint` |
+
+`api:client` reads the backend's document, which Compose mounts at
+`extension/openapi.json` and `.gitignore` keeps out of the repository: the one
+copy of the contract lives in `backend/`. Regenerate the document first — the
+command is in the backend briefing.
 
 The build writes `extension/dist`. Load it with `chrome://extensions` →
 Developer mode → Load unpacked → `extension/dist`.
 
 ## Briefing gaps
 
-- **The API client.** The command to regenerate it from the backend's OpenAPI
-  document, to be added with the API.
 - **Supported sites.** The list of site extractors and their fixture
   locations, once the first are built.

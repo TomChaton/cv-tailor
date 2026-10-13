@@ -279,6 +279,12 @@ deliberately, and not to be made to agree.
 - **`llm_batches`** — provider batch ID, state, submitted/ended times, request
   count, linked revisions.
 
+**A posting's URL is `text`, not a varchar.** A job board's URL carries session
+keys and tracking parameters, and passes 255 characters routinely. SQLite
+enforces no varchar width, so a narrower column holds everything right up until
+the first database that does enforce one — and moving to one of those is meant
+to be a configuration change rather than a data loss.
+
 ### Revisions are immutable once complete
 
 A revision that has reached `ready` or `failed` is never updated. Editing or
@@ -347,6 +353,55 @@ The same role appears on several boards. Capture computes a hash over the
 normalised title, company and description text; a capture matching an existing
 posting returns that posting rather than creating another. Agency reposts with the
 client anonymised will not match, and that is accepted.
+
+**The URL is not part of the hash.** The same posting under two URLs is one
+posting, and a retry the extension never saw the answer to is the same capture
+rather than a second one. Normalising case and whitespace is part of the same
+judgement: neither changes what a posting says.
+
+The parts are joined by a separator that cannot occur in any of them, so no
+wording can shuffle words across the boundary between title and company and
+collide with a different posting.
+
+## Capture
+
+The endpoint's shape and its status codes are in the system briefing, with the
+API contract. What belongs here is where the pieces live.
+
+- **A form request holds the rules, and the rules are the contract.** The
+  OpenAPI document's request body is generated from them, so a field added to
+  the form request reaches the extension's client when the document is
+  regenerated. There is nowhere else to state the shape of a capture.
+- **A rejected capture is a warning in the logs, naming the fields only.** The
+  values are the posting's own text. Without the line, an extension whose
+  extraction has broken fails silently on the only side anybody is watching.
+- **The body limit is middleware, not a rule.** A field rule is checked after
+  the body has been read and decoded, which is exactly the cost the limit
+  exists to avoid. A body with no declared length is left to PHP's
+  `post_max_size`, which is the only ceiling available before the bytes arrive.
+- **The action's result carries the posting's identity rather than the
+  posting.** That is all an answer to a capture needs, and keeping Eloquent out
+  of the response path is what lets the OpenAPI document be generated from the
+  types alone — see below.
+
+### The OpenAPI document
+
+Generated from the routes, the form requests and the controllers, and
+committed, so the extension's client can be built from it without this
+application running.
+
+- **`php artisan cv:openapi` regenerates it**, and **a test fails when the
+  committed file and the code disagree.** A contract nothing checks is a
+  contract that drifts: the backend changes and the extension carries on being
+  built against the old shape.
+- **The command provisions a throwaway in-memory database and migrates it.**
+  The generator types a document by reading Eloquent models' own schema, so it
+  needs one; the document describes the code, and must not come out differently
+  on a machine whose database is behind, missing or full.
+- **Refusals are read off the code rather than asserted beside it** — `401`
+  from the route's `auth:sanctum`, `422` from the form request's rules, `413`
+  from the presence of the body-limit middleware. A document maintained by hand
+  beside the code is a document that disagrees with it.
 
 ## Generation
 
@@ -880,6 +935,12 @@ checkout, so an edit needs no rebuild. It sits in the `tools` profile, so
 | Format | `docker compose run --rm toolchain vendor/bin/pint` |
 | Check formatting only | `docker compose run --rm toolchain vendor/bin/pint --test` |
 | Static analysis | `docker compose run --rm toolchain vendor/bin/phpstan analyse --memory-limit=1G` |
+| Regenerate the OpenAPI document | `docker compose run --rm toolchain php artisan cv:openapi` |
+
+`cv:openapi` writes `backend/openapi.json`, or somewhere else with `--path`. It
+needs nothing running and no database of its own: see The OpenAPI document,
+above. Regenerating the extension's client from the result is part of the same
+change — the command for that is in the extension briefing.
 
 These run against the **running** stack and so use `exec app`, not the
 toolchain:
@@ -904,7 +965,7 @@ the mounted CV, takes `--cv` for another file, and writes the PDF where it is
 told, which has to be somewhere writable. `docker compose cp` brings it out to
 be read.
 
-### Two things that are easy to get wrong
+### Three things that are easy to get wrong
 
 - **The test suite supplies its own environment** and is handed no `.env`, so a
   result never depends on how a particular machine is configured. Test values
@@ -912,3 +973,8 @@ be read.
 - **Configuration is never cached.** It arrives as container environment
   variables, and a cached config file would freeze whatever happened to be set
   when the image was built.
+- **A route memoises the controller it resolved**, and a route lives as long as
+  the application does. So a test that swaps a binding *between* two requests
+  is served the second time by the instance the first request built, and the
+  swap appears to have been ignored. Install the double before the first
+  request of the test.

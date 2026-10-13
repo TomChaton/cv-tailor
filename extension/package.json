@@ -6,6 +6,7 @@
   "description": "cv-tailor's Chrome extension: capture a job description and send it to the backend.",
   "scripts": {
     "build": "node scripts/build.mjs",
+    "api:client": "openapi-typescript openapi.json --output src/api/schema.ts",
     "test": "vitest run",
     "lint": "eslint . && tsc --noEmit"
   },
@@ -13,8 +14,12 @@
     "@eslint/js": "^10.0.1",
     "esbuild": "^0.28.2",
     "eslint": "^10.12.0",
+    "openapi-typescript": "^7.13.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.71.1",
     "vitest": "^5.0.4"
+  },
+  "dependencies": {
+    "openapi-fetch": "^0.17.0"
   }
 }

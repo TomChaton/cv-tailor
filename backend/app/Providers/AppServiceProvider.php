@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Generation\BuildGenerationRequest;
+use App\Http\Middleware\LimitRequestBody;
 use App\Http\TrustedProxies;
 use App\MasterCv\ReadMasterCv;
 use App\Observability\Listeners\RecordWorkerHeartbeat;
@@ -45,6 +46,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->when(BuildGenerationRequest::class)
             ->needs('$maxTokens')
             ->give(fn (): int => Config::integer('cv.llm.max_output_tokens.generation'));
+
+        $this->app->when(LimitRequestBody::class)
+            ->needs('$maxBytes')
+            ->give(fn (): int => Config::integer('cv.api.max_body_bytes'));
     }
 
     public function boot(): void

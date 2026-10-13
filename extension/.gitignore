@@ -1,2 +1,5 @@
 /dist
 /node_modules
+
+# The backend's OpenAPI document, mounted into the node container.
+/openapi.json
