@@ -527,24 +527,140 @@ the revision and shown in the review UI. **Deterministic failures block the
 revision from `ready`; faithfulness findings are flagged for the owner, not
 auto-rejected.**
 
-Deterministic checks, run on every revision including manual edits:
+**Every check runs on every revision, whatever produced it**, including a
+manual edit. The guarantee cannot depend on where content came from: words the
+owner typed are no better evidenced than words a model wrote, and a manual edit
+has met no output schema at all, so it is the revision that needs the checks
+most.
+
+The checks read a parse and an output and return findings — no database, no
+log, no status. That is what lets the same checks be re-run over a revision that
+already exists, against a master CV version it was not generated from, to see
+what a change to the CV or to a check would say about it.
+
+### A finding
+
+A finding records **the check that raised it, its severity, the master CV IDs
+and the output field involved, and a message written for the owner**. The field
+is a path into the output (`roles[0].items[1].text`), because the owner has to
+be told where to look and the same ID may be used correctly in one place and
+wrongly in another.
+
+The message is a **language catalogue entry like any other word on a screen**,
+and the rendered sentence is what is stored: one locale, one owner, and a
+message stored as written still reads the same after the check that raised it
+has been rewritten. A finding quotes CV and output content, so it belongs on the
+revision and never in a log line.
+
+### Severity, and what it costs
+
+- **Blocking** — the revision claims something the master CV does not support.
+  It is never rendered.
+- **Advisory** — the revision is untidy. Recorded, shown, and never a refusal.
+
+The two role-mode checks are deliberately on opposite sides. **A demotion
+blocks**: code owns each role's default mode, so showing less of a role is a
+decision taken out of the owner's hands, and a CV that quietly drops a role the
+owner wanted shown is wrong in a way only the owner would notice. **A promotion
+with no reason given is advisory**: the promotion itself is the judgement the
+model was asked to make, and nothing in the CV is a false claim because the
+explanation is missing.
+
+### `validated` means validation has run
+
+Generation leaves a revision `generated`; validation always leaves it
+`validated`. **`validated` does not mean it passed** — the findings say that. A
+revision with a blocking finding stays `validated` and is never rendered. It is
+not `failed`: `failed` is for a revision that could not be produced, not one
+produced wrongly, and the owner regenerates from this one with instructions,
+which needs the revision and its findings intact. Rendering takes `validated`
+with no blocking findings to `ready`.
+
+**An empty findings list is not a null one.** A revision that passed cleanly
+stores an empty list; one that has never been validated stores null. Nothing may
+treat the two as the same thing, or a revision nobody checked would render like
+one that passed. The render gate reads both, and refuses a revision that has
+never been validated as firmly as one that failed — and a finding whose severity
+nothing can read is treated as blocking, because a finding nobody can classify
+must not be the reason a CV is let through.
+
+### The deterministic checks
+
+All six block.
 
 - **IDs resolve** against the referenced master CV version, and nothing marked
-  `TODO` was selected.
-- **Rewordings carry `supports`**, and every supporting ID exists.
-- **Technology-to-role**: a vocabulary built from the skills index; any
-  technology term in a reworded item must appear in that role's stack.
-- **Versions**: any version number in output must match the source for that
-  role.
-- **Do not claim**: no term from the "Do not claim" section appears anywhere in
-  the output.
-- **Independent projects stay independent**: content from them never appears
-  under an employer.
+  `TODO` was selected. An ID is in the CV and unavailable, or not in the CV at
+  all, and the owner is told which: a `TODO` is a fact the author declined to
+  state, so an output naming it has filled in a blank.
+- **Rewordings carry `supports`**, and every supporting ID resolves. Without a
+  citation an uncited rewording is not a weak claim but an unfalsifiable one,
+  with nothing for this check or the faithfulness check to read it against. The
+  summary always needs support: the master CV has no summary for it to repeat.
+  **This check owns the IDs inside a `supports` list and the ID check owns the
+  rest**, so between them every ID is checked exactly once — a finding repeated
+  in two vocabularies tells the owner nothing twice.
+- **Technology-to-role**: a technology named in a reworded item was used in
+  that role. **The skills index decides what counts as a technology; the role's
+  own tech stack decides whether that role may claim it.** The two sources are
+  different on purpose — the index is a property of the person and the stack is
+  a property of the role, and the claim is about the role. The index decides for
+  everything in it, practices included: it is the author's own statement of what
+  they have worked with, and second-guessing which rows count would invent a
+  taxonomy the author never wrote.
+- **Versions**: a version in a reworded item is one the role's own material
+  records — its stack, its context, its own bullets, and nothing from another
+  role. **A technology the role pins no version to refuses every version**,
+  because the CV's rule is that a version it does not give is not to be added.
+  A version in the summary belongs to no role and is checked against the whole
+  document instead: a version the CV records nowhere is wrong wherever it
+  appears, and the summary is the field most worth checking.
+- **Do not claim**: no forbidden term appears in the output. **The terms are
+  each item's bold lead-in**, which is the section's convention, plus a
+  parenthetical sitting directly after that lead-in, where the brackets carry
+  the list. Reading the rest of the line would take the explanation's "RabbitMQ
+  and AWS SQS are" for forbidden terms and block a CV for claiming something
+  the CV supports.
+- **Independent projects stay independent**, in both directions, for an item's
+  own ID and for the IDs a rewording cites. The output schema's two container
+  shapes already make the wrong kind unreturnable for a generated revision; this
+  covers the items inside a container, and a manual edit.
 
-Faithfulness check, for rewordings and the summary only: a live call to the
-small validation model asking whether the text asserts anything its cited
-sources do not. Live rather than batched — it is cheap, and batching it would
-double the time to a ready CV.
+### Two deliberately narrow readings
+
+Both of these keep a check from firing on correct behaviour. **A validator that
+blocks a correct CV is a validator that gets switched off**, which costs the
+guarantee far more than the case it was reaching for.
+
+- **"Do not claim" searches what can reach the page**, and not `jd_analysis` or
+  `review_notes`. Those are where the output names the requirements the master
+  CV does not support, which is exactly what the CV's rules ask it to do.
+  Searching them would block nearly every CV written for a job that mentions
+  anything on the list.
+- **The lint's skill vocabulary is not reused.** Its matching is generous by
+  design, and across a few hundred rows the union of words is large enough that
+  almost any single word is found somewhere. The validator matches instead
+  against *one role's* handful of stack entries, each read as a set of words, so
+  the generosity that lets "Slim" stand for "Slim Framework" cannot leak between
+  roles. A parenthetical in the index becomes another name for a technology only
+  when it pins a version — "Slim Framework (Slim 4)" does and "AWS CloudWatch
+  (logs, metrics, alarms)" does not, and taking "logs" for a technology would
+  make the word a claim.
+
+### The word budget
+
+Advisory, and advisory is the point: a length is a target stated in the prompt
+and never a limit, and a long CV that is true beats a short one that is not. It
+counts **the words the selection chose** rather than the words on the page —
+headings, dates and contact details are the same on every CV this instance
+produces, so they are not what a budget is spent on, and the selection is the
+only thing a regeneration can trade against it. Items under an omitted role cost
+nothing, and a verbatim item costs the master CV's own sentence.
+
+### The faithfulness check
+
+For rewordings and the summary only: a live call to the small validation model
+asking whether the text asserts anything its cited sources do not. Live rather
+than batched — it is cheap, and batching it would double the time to a ready CV.
 
 ## Rendering
 

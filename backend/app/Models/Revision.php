@@ -27,6 +27,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property-read int $posting_id
  * @property-read int $master_cv_version_id
  * @property-read string $prompt_version
+ * @property-read RevisionStatus $status
+ * @property-read ?array<string, mixed> $output_json
+ * @property-read ?array<array-key, mixed> $validation_json
  */
 #[ObservedBy([RevisionObserver::class])]
 #[Fillable([
