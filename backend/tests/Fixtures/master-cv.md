@@ -6,6 +6,12 @@ presentation:
   target_pages: 2
   condense_roles_ending_before: 2018
   omit_roles_ending_before: 2012
+  contact_fields:
+    - Location
+    - Email
+    - LinkedIn
+  include_awards: true
+  include_interests: false
   headline_titles:
     - Senior Backend Engineer
     - Platform Engineer

@@ -46,6 +46,9 @@ class MasterCvParserTest extends TestCase
         $this->assertSame(2018, $policy->condenseRolesEndingBefore);
         $this->assertSame(2012, $policy->omitRolesEndingBefore);
         $this->assertSame(['Senior Backend Engineer', 'Platform Engineer'], $policy->headlineTitles);
+        $this->assertSame(['Location', 'Email', 'LinkedIn'], $policy->contactFields);
+        $this->assertTrue($policy->includeAwards);
+        $this->assertFalse($policy->includeInterests);
     }
 
     public function test_a_front_matter_without_a_policy_gets_working_defaults(): void
@@ -56,6 +59,16 @@ class MasterCvParserTest extends TestCase
         $this->assertNull($cv->presentation->condenseRolesEndingBefore);
         $this->assertNull($cv->presentation->omitRolesEndingBefore);
         $this->assertNull($cv->presentation->headlineTitles);
+
+        // A CV header has always carried these four, and a contact section
+        // holds more than a header should.
+        $this->assertSame(
+            ['Location', 'Phone', 'Email', 'LinkedIn'],
+            $cv->presentation->contactFields,
+        );
+        // A section the author wrote is shown unless they say otherwise.
+        $this->assertTrue($cv->presentation->includeAwards);
+        $this->assertTrue($cv->presentation->includeInterests);
 
         foreach ($cv->roles as $role) {
             $this->assertSame(RoleMode::Full, $role->defaultMode);
@@ -185,7 +198,7 @@ class MasterCvParserTest extends TestCase
         $role = $this->role('northgate-tickets');
 
         $this->assertSame(
-            [['label' => 'Platform work', 'line' => 198]],
+            [['label' => 'Platform work', 'line' => 204]],
             $role->unknownBlocks,
         );
         $this->assertSame('Platform work', $role->achievements[5]->blockLabel);
