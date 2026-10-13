@@ -277,7 +277,10 @@ deliberately, and not to be made to agree.
     `failed`; `attempts`; `error`.
 - **`master_cv_versions`** — as above.
 - **`llm_batches`** — provider batch ID, state, submitted/ended times, request
-  count, linked revisions.
+  count.
+- **`llm_batch_revision`** — one row per submission: which batch carried which
+  revision, and what the provider made of it. See The join table carries an
+  outcome per submission.
 
 **A posting's URL is `text`, not a varchar.** A job board's URL carries session
 keys and tracking parameters, and passes 255 characters routinely. SQLite
@@ -564,20 +567,123 @@ injected claims regardless.
 
 ### Batch lifecycle
 
-Generation uses the provider's batch API: nothing is interactive, and batches
-are cheaper.
+Generation uses the provider's batch API: nothing is interactive, and a batch
+costs half as much as the same requests sent live.
 
-- **Submit** (scheduled): gather `pending` revisions; submit when there are
-  enough, or when the oldest has waited past a threshold. Each request's
-  custom ID is the revision's ID.
-- **Poll** (scheduled): check open batches. When one ends, stream its results
-  and dispatch one queued job per result. Success → store output and usage,
-  then validate. Error or expiry → back to `pending` with `attempts`
-  incremented, until a limit, then `failed`.
-- A batch that stays open beyond a threshold is reported by `cv:status` and
-  logged as a warning: an uncollected batch eventually expires.
+- **Submit** (scheduled): gather every `pending` revision and send it as one
+  batch. Each request's custom ID is the revision's ID.
+- **Poll** (scheduled): ask about every batch that still owes us results, and
+  drain every ended one in the same run. Streaming a batch's results dispatches
+  one queued job per result; the job applies it.
+- A batch that stays open beyond a configured age is reported by `cv:status`
+  and logged as a warning: an uncollected batch eventually expires.
 - **"Generate now"** in the review UI bypasses batching with a live call for a
   single revision, for deadlines.
+
+**The batch API's discount applies to a batch of one, so there is no minimum
+batch size and no maximum wait.** A quorum would buy nothing and cost every
+revision a wait for company that may never arrive. A batch of one is the normal
+case here, which is also why a single bad batch is not evidence of anything.
+
+**The request a revision is submitted with comes from an injected contract**,
+implemented by generation. The batch lifecycle moves revisions and batches
+between states and knows nothing about prompts; generation knows about prompts
+and nothing about batches. One interface is cheaper than either reading the
+other.
+
+**The revisions are claimed after the provider has accepted the batch**, not
+before. A failure on the way out then leaves every revision `pending`, which
+the next run picks up — where claiming first would leave them `submitted` with
+no batch to collect them, a state nothing in the system moves out of. The cost
+is the other way round: a crash between the provider accepting a batch and the
+claim being written loses track of a batch that was paid for, and the client's
+own `llm.batch_submitted` line carries the provider's ID, which is the one
+thing needed to find it again.
+
+#### `ended` and `collected` are separate states
+
+The provider reports that it has finished; only we know whether the results
+were actually taken. Collapsing the two would make an uncollected batch look
+finished right up until its results expired — and a batch that is submitted,
+paid for and never collected is the expensive failure here, not a request that
+errors.
+
+A batch's terminal state says what became of its results rather than only that
+they were read: every request expired makes the batch `expired`, every request
+errored makes it `failed`, and anything else is `collected`. A reader of
+`cv:status` then sees a batch that expired as expired without counting rows.
+
+#### The join table carries an outcome per submission
+
+`llm_batch_revision` holds one row per *submission*, not per revision, so a
+revision that expires in one batch and goes out again in the next has two rows
+and the history of which batch carried which attempt survives.
+
+**The `outcome` column is what makes collection resumable.** A row stands at
+`awaiting` until a result has been applied to it, so a poller that died halfway
+through a batch re-runs and dispatches only what is left — applying nothing
+twice and dropping nothing. The batch closes only once no row is awaiting,
+which is also why it cannot close in the same run that dispatched the work.
+
+#### A result is applied only to a revision still awaiting it
+
+The submission row must still be `awaiting` and the revision must still be
+`submitted`. The case that makes the guard necessary: a revision goes out in
+one batch, that batch expires, the revision returns to `pending` and goes out
+again — and then the first batch's results arrive after all. Keyed only on the
+custom ID, the stale output would be written over a revision that has moved on.
+
+The guard is a conditional update of the submission row, so two runs holding
+the same result cannot both pass it. The row is claimed before the revision is
+looked at, because the outcome is a fact about the submission whatever the
+revision has since become; a row left `awaiting` would hold its batch open for
+ever. A result that is dropped is logged, because one dropped in silence is
+indistinguishable from one that never arrived.
+
+#### What each result does to a revision
+
+| Result | Then |
+| --- | --- |
+| `succeeded` | Output and usage stored, revision `generated` |
+| `succeeded` but unusable | Back to `pending`, an attempt spent |
+| `errored`, server-side | Back to `pending`, an attempt spent |
+| `expired` or `canceled` | Back to `pending`, an attempt spent |
+| `errored`, malformed request | Stays `pending`, attempts untouched, alarm raised |
+| An attempt spent past the limit | `failed`, with `error` recorded |
+
+**A malformed request leaves the revision `pending` with its attempts
+untouched.** The request we built was refused, so the revision is not at fault,
+and `failed` is terminal and immutable: driving it there would leave a child
+revision to create for every posting caught by one bug. Left `pending`, a fix
+and a re-arm pick up everything that was waiting, intact. An attempt that is
+never spent also means this failure can never exhaust the limit.
+
+**A response that cannot be read as a selection spends an attempt.** It is what
+a response that reached the token ceiling looks like — cut off mid-document —
+and the answer is a larger ceiling. The limit is what stops the same truncation
+being bought over and over.
+
+#### The submitter stops itself
+
+**Two consecutive batches whose every result is a malformed request halt the
+submitter.** One such batch is more likely a single pathological job
+description than a broken schema, and because a batch of one is normal here, a
+single-batch rule would let one oversized posting stop all generation. A batch
+the provider was willing to serve breaks the streak, and a batch collected over
+more than one run counts once.
+
+**The poller is never halted.** Batches already in flight still need
+collecting, and stopping both would turn a bug in the request builder into work
+paid for and thrown away.
+
+The halt lives in the cache, keyed as the heartbeats are, so it survives a
+container restart without owning schema, and **only `cv:batch-resume` clears
+it** — not a deploy, not a restart, not a timer. A state that cleared itself
+would let a restart quietly resume submitting requests the provider refuses.
+The halt is an error in the log when it happens and a line of its own in
+`cv:status` for as long as it lasts: a stopped submitter has to be the first
+thing a reader sees rather than something inferred from a pile of pending
+revisions that are not moving.
 
 ### LLM client
 
@@ -992,11 +1098,18 @@ toolchain:
 | Issue an extension token | `docker compose exec app php artisan cv:token` |
 | Check the master CV | `docker compose exec app php artisan cv:lint` |
 | Queue captured postings for generation | `docker compose exec app php artisan cv:queue` |
+| Submit every pending revision as one batch | `docker compose exec app php artisan cv:batch-submit` |
+| Collect the results of every finished batch | `docker compose exec app php artisan cv:batch-poll` |
+| Arm the submitter again after it halted itself | `docker compose exec app php artisan cv:batch-resume` |
 | Add the IDs a master CV is missing | `docker compose exec app php artisan cv:id /var/lib/cv-tailor/master-cv.md > master-cv-with-ids.md` |
 | See the master CV through the CV template | `docker compose exec app php artisan cv:preview /tmp/cv-preview.pdf` |
 
 `cv:owner` prompts, and takes `--name`, `--email` and `--password` when a
 script needs it. `cv:token` prints the token once; only its hash is stored.
+
+`cv:batch-submit` and `cv:batch-poll` are scheduled as well, and run by hand
+when somebody wants the answer now. `cv:batch-resume` is the only way to clear
+a halted submitter, and `cv:status` is where the halt is visible.
 
 `cv:lint` checks the mounted CV, and takes a path when another file is wanted.
 `cv:id` reads the mounted CV and writes elsewhere — standard output above, or a

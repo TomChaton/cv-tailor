@@ -46,6 +46,11 @@ final class FakeLlmClient implements LlmClient
 
     private bool $batchOpen = false;
 
+    private ?LlmFailureKind $batchFailure = null;
+
+    /** @var array<string, LlmFailureKind> */
+    private array $pollFailures = [];
+
     private int $batches = 0;
 
     public function __construct(
@@ -71,6 +76,39 @@ final class FakeLlmClient implements LlmClient
     public function willFailWith(LlmFailureKind $kind): self
     {
         $this->liveOutcomes[] = ['fixture' => null, 'failure' => $kind];
+
+        return $this;
+    }
+
+    /**
+     * Refuse to answer about one batch, the way a provider answers about a
+     * batch it no longer holds.
+     */
+    public function willFailPollOf(string $providerBatchId, LlmFailureKind $kind): self
+    {
+        $this->pollFailures[$providerBatchId] = $kind;
+
+        return $this;
+    }
+
+    /**
+     * Forget the queued results, so that a second batch answers with its own
+     * rather than with every result the test has ever queued.
+     */
+    public function forgetResults(): self
+    {
+        $this->queuedResults = [];
+
+        return $this;
+    }
+
+    /**
+     * Refuse the next batch submission, the way a provider refuses a batch it
+     * will not take at all.
+     */
+    public function willRefuseTheBatch(LlmFailureKind $kind): self
+    {
+        $this->batchFailure = $kind;
 
         return $this;
     }
@@ -163,6 +201,14 @@ final class FakeLlmClient implements LlmClient
             throw new LogicException('A batch must carry at least one request.');
         }
 
+        if ($this->batchFailure !== null) {
+            $failure = new LlmFailure(kind: $this->batchFailure, providerRequestId: 'req_fake');
+
+            $this->events->failed(null, $failure);
+
+            throw $failure;
+        }
+
         $batchId = sprintf('msgbatch_fake_%d', ++$this->batches);
 
         $this->submittedBatches[] = ['batch_id' => $batchId, 'requests' => $requests];
@@ -180,6 +226,17 @@ final class FakeLlmClient implements LlmClient
 
     public function pollBatch(string $providerBatchId): BatchState
     {
+        if (isset($this->pollFailures[$providerBatchId])) {
+            $failure = new LlmFailure(
+                kind: $this->pollFailures[$providerBatchId],
+                providerRequestId: 'req_fake',
+            );
+
+            $this->events->failed(null, $failure, $providerBatchId);
+
+            throw $failure;
+        }
+
         if ($this->batchOpen) {
             return new BatchState(
                 providerBatchId: $providerBatchId,

@@ -2,6 +2,9 @@
 
 namespace App\Providers;
 
+use App\Batching\ApplyResult;
+use App\Batching\BatchRequestBuilder;
+use App\Batching\PollBatches;
 use App\Generation\BuildGenerationRequest;
 use App\Http\Middleware\LimitRequestBody;
 use App\Http\TrustedProxies;
@@ -37,6 +40,12 @@ class AppServiceProvider extends ServiceProvider
             },
         );
 
+        // The batch lifecycle moves revisions between states and knows nothing
+        // about prompts. Generation knows about prompts and nothing about
+        // batches. This is the one place that says which builder the submitter
+        // uses.
+        $this->app->bind(BatchRequestBuilder::class, BuildGenerationRequest::class);
+
         // Contextual binding: these classes want the master CV path, and the
         // alternative is a config lookup buried inside domain code.
         $this->app->when([MasterCvSection::class, ReadMasterCv::class])
@@ -46,6 +55,14 @@ class AppServiceProvider extends ServiceProvider
         $this->app->when(BuildGenerationRequest::class)
             ->needs('$maxTokens')
             ->give(fn (): int => Config::integer('cv.llm.max_output_tokens.generation'));
+
+        $this->app->when(PollBatches::class)
+            ->needs('$staleAfterMinutes')
+            ->give(fn (): int => Config::integer('cv.batches.stale_after_minutes'));
+
+        $this->app->when(ApplyResult::class)
+            ->needs('$attemptLimit')
+            ->give(fn (): int => Config::integer('cv.batches.attempt_limit'));
 
         $this->app->when(LimitRequestBody::class)
             ->needs('$maxBytes')

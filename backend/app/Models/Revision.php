@@ -28,6 +28,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property-read int $master_cv_version_id
  * @property-read string $prompt_version
  * @property-read RevisionStatus $status
+ * @property-read int $attempts
  * @property-read ?array<string, mixed> $output_json
  * @property-read ?array<array-key, mixed> $validation_json
  */
