@@ -4,6 +4,7 @@ namespace App\Rendering;
 
 use App\MasterCv\MasterCvParser;
 use App\Models\Revision;
+use App\Postings\MarkPostingReady;
 use App\Rendering\Html\CvHtml;
 use App\Revisions\RevisionStatus;
 use App\Validation\RenderGuard;
@@ -24,6 +25,9 @@ use App\Validation\ValidationReport;
  * `validated` in that case — it was produced correctly and only the conversion
  * did not happen — and `pdf_path` is left alone, because a path with no file
  * behind it is worse than no path at all.
+ *
+ * A rendered revision takes its posting with it, so the tracker the owner
+ * reads does not understate what is finished.
  */
 class RenderRevision
 {
@@ -34,6 +38,7 @@ class RenderRevision
         private readonly CvHtml $html,
         private readonly PdfConverter $converter,
         private readonly PdfStore $store,
+        private readonly MarkPostingReady $posting,
         private readonly RenderingEvents $events,
     ) {}
 
@@ -76,6 +81,14 @@ class RenderRevision
         ])->save();
 
         $this->events->rendered($revision, $path, strlen($pdf), PdfPageCount::of($pdf));
+
+        // The posting follows from here rather than from the caller, for the
+        // same reason validation is queued where the output is stored: the
+        // step that puts a revision at `ready` is the step that knows the
+        // posting's denormalised `ready` is now out of date, and every path
+        // that renders then keeps the tracker in step without having to
+        // remember to.
+        $this->posting->handle($revision);
 
         return $revision;
     }

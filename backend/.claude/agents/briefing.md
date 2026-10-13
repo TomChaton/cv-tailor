@@ -345,6 +345,25 @@ knows about, and the column is what makes the list an application tracker
 rather than a view of the pipeline. The cost is that `ready` is denormalised
 and has to be kept in step with the current revision.
 
+**It is kept in step by the step that renders.** Putting a revision at `ready`
+is the one moment the denormalised column is known to be out of date, so the
+render carries the posting with it — the same reasoning that queues validation
+where the output is stored, rather than from the caller that stored it. Every
+path that produces a PDF then moves the tracker without having to remember to,
+and a posting whose CV is rendered never reads `queued`.
+
+**A posting moves to `ready` only from `queued`**, and only on its *current*
+revision. `reviewed` and `applied` are the owner's own states, which no
+revision knows about, so a render arriving afterwards must not drag the tracker
+backwards; `discarded` is the owner's too. A revision the owner is not looking
+at says nothing about where the posting has got to.
+
+**The whole condition is one conditional update**, as the queue's claim is: a
+posting that has moved on, or is already `ready`, matches no row, so a second
+run writes nothing and logs nothing. A duplicate dispatch is the ordinary
+consequence of a retried job, so nothing may depend on the transition happening
+exactly once.
+
 Both posting status and revision status are PHP enums, cast on the model, so a
 state that exists only in a string literal cannot be invented. Each reports a
 count per state in `cv:status`, including the states nothing is in: a state

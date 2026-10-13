@@ -10,6 +10,7 @@ use App\Llm\TokenUsage;
 use App\Models\MasterCvVersion;
 use App\Models\Revision;
 use App\Observability\EventLogger;
+use App\Postings\PostingStatus;
 use App\Rendering\PdfConversionFailed;
 use App\Rendering\PdfConverter;
 use App\Rendering\Testing\FakePdfConverter;
@@ -59,6 +60,10 @@ class RevisionChainTest extends TestCase
         $this->assertSame([], $stored->validation_json);
         $this->assertSame('revisions/'.$revision->id.'.pdf', $stored->pdf_path);
         Storage::disk('pdfs')->assertExists('revisions/'.$revision->id.'.pdf');
+
+        // The tracker the owner reads is the end of the chain, not a step
+        // somebody has to take afterwards.
+        $this->assertSame(PostingStatus::Ready, $revision->posting()->firstOrFail()->status);
     }
 
     /**
@@ -76,6 +81,7 @@ class RevisionChainTest extends TestCase
             'revision.validated',
             'revision.resolved',
             'revision.rendered',
+            'posting.ready',
         ], $log->events());
     }
 
@@ -245,11 +251,22 @@ class RevisionChainTest extends TestCase
         ]);
     }
 
+    /**
+     * A revision as the submitter leaves one, on the posting `cv:queue` left
+     * behind it: `queued`, and looking at this revision.
+     */
     private function submitted(): Revision
     {
-        return Revision::factory()->status(RevisionStatus::Submitted)->create([
+        $revision = Revision::factory()->status(RevisionStatus::Submitted)->create([
             'master_cv_version_id' => $this->version()->id,
         ]);
+
+        $revision->posting()->firstOrFail()->fill([
+            'status' => PostingStatus::Queued,
+            'current_revision_id' => $revision->id,
+        ])->save();
+
+        return $revision;
     }
 
     /**
