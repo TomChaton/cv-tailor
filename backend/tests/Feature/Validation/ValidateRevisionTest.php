@@ -133,6 +133,7 @@ class ValidateRevisionTest extends TestCase
             'do_not_claim',
             'ids_resolve',
             'independent_projects_stay_independent',
+            'items_belong_to_their_role',
             'promotion_explained',
             'role_mode_not_demoted',
             'technology_to_role',

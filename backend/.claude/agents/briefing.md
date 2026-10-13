@@ -586,7 +586,7 @@ must not be the reason a CV is let through.
 
 ### The deterministic checks
 
-All six block.
+All seven block.
 
 - **IDs resolve** against the referenced master CV version, and nothing marked
   `TODO` was selected. An ID is in the CV and unavailable, or not in the CV at
@@ -614,37 +614,53 @@ All six block.
   A version in the summary belongs to no role and is checked against the whole
   document instead: a version the CV records nowhere is wrong wherever it
   appears, and the summary is the field most worth checking.
-- **Do not claim**: no forbidden term appears in the output. **The terms are
-  each item's bold lead-in**, which is the section's convention, plus a
-  parenthetical sitting directly after that lead-in, where the brackets carry
-  the list. Reading the rest of the line would take the explanation's "RabbitMQ
-  and AWS SQS are" for forbidden terms and block a CV for claiming something
-  the CV supports.
+- **Do not claim**: no forbidden term appears in **the fields that can reach
+  the page** — the headline, the summary, the skills and every selected item.
+  `jd_analysis` and `review_notes` are not searched: they are review surfaces,
+  read in the UI and never rendered, and they are where the output names the
+  requirements the master CV does not support, which is exactly what the CV's
+  rules instruct it to do. Blocking a revision for honestly reporting
+  "Kubernetes — gap" would fire on nearly every job, and a guardrail that always
+  fires is one that gets ignored.
+
+  **The terms are each item's bold lead-in**, which is the section's convention,
+  plus a parenthetical sitting directly after that lead-in, where the brackets
+  carry the list. Reading the rest of the line would take the explanation's
+  "RabbitMQ and AWS SQS are" for forbidden terms and block a CV for claiming
+  something the CV supports.
+- **Items belong to their role**: an item shown under a role is that role's
+  own. This is the quietest fabrication there is — a *verbatim* bullet from one
+  employer, selected under another, passes every other check, and the CV then
+  says the work happened somewhere it did not with every word still the
+  author's. It is checked here because the schema cannot reach it: scoping the
+  item enum to one role would need a separate object shape and a separate enum
+  per role. **Ownership is read from the parse, not from the ID's prefix** —
+  they agree on every ID `cv:id` writes, and the parse is the fact, since IDs
+  are written by hand and an author may give a bullet a name of its own.
 - **Independent projects stay independent**, in both directions, for an item's
   own ID and for the IDs a rewording cites. The output schema's two container
   shapes already make the wrong kind unreturnable for a generated revision; this
-  covers the items inside a container, and a manual edit.
+  covers the items inside a container, and a manual edit. **It overlaps the
+  containment check and is kept** — containment does not read the IDs a
+  rewording cites, because evidence legitimately spans the whole document and
+  the one crossing that is never legitimate is this one. Two overlapping checks
+  are cheaper than one with a gap.
 
-### Two deliberately narrow readings
+### The lint's skill vocabulary is not reused
 
-Both of these keep a check from firing on correct behaviour. **A validator that
-blocks a correct CV is a validator that gets switched off**, which costs the
-guarantee far more than the case it was reaching for.
+Its matching is generous by design, and across a few hundred rows the union of
+words is large enough that almost any single word is found somewhere. The
+validator matches instead against *one role's* handful of stack entries, each
+read as a set of words, so the generosity that lets "Slim" stand for "Slim
+Framework" cannot leak between roles. A parenthetical in the index becomes
+another name for a technology only when it pins a version — "Slim Framework
+(Slim 4)" does and "AWS CloudWatch (logs, metrics, alarms)" does not, and
+taking "logs" for a technology would make the word a claim.
 
-- **"Do not claim" searches what can reach the page**, and not `jd_analysis` or
-  `review_notes`. Those are where the output names the requirements the master
-  CV does not support, which is exactly what the CV's rules ask it to do.
-  Searching them would block nearly every CV written for a job that mentions
-  anything on the list.
-- **The lint's skill vocabulary is not reused.** Its matching is generous by
-  design, and across a few hundred rows the union of words is large enough that
-  almost any single word is found somewhere. The validator matches instead
-  against *one role's* handful of stack entries, each read as a set of words, so
-  the generosity that lets "Slim" stand for "Slim Framework" cannot leak between
-  roles. A parenthetical in the index becomes another name for a technology only
-  when it pins a version — "Slim Framework (Slim 4)" does and "AWS CloudWatch
-  (logs, metrics, alarms)" does not, and taking "logs" for a technology would
-  make the word a claim.
+**A validator that blocks a correct CV is a validator that gets switched off**,
+which costs the guarantee far more than the case it was reaching for. That is
+the reasoning behind this and behind the fields "Do not claim" leaves alone, and
+it is the only thing a scope decision here is ever allowed to buy.
 
 ### The word budget
 

@@ -35,6 +35,11 @@ return [
         'term' => ':term is in the master CV\'s "Do not claim" section.',
     ],
 
+    'items_belong_to_their_role' => [
+        'wrong_role' => ':id is from :source and is shown under :role.',
+        'not_an_item' => ':id is a role, not one of its items.',
+    ],
+
     'independent_projects_stay_independent' => [
         'under_employer' => ':id is from :source, an independent project, and is shown under an employer.',
         'under_project' => ':id is from :source and is shown under an independent project.',

@@ -6,6 +6,7 @@ use App\MasterCv\ParsedMasterCv;
 use App\Validation\Checks\DoNotClaim;
 use App\Validation\Checks\IdsResolve;
 use App\Validation\Checks\IndependentProjectsStayIndependent;
+use App\Validation\Checks\ItemsBelongToTheirRole;
 use App\Validation\Checks\PromotionIsExplained;
 use App\Validation\Checks\RewordingsCarrySupport;
 use App\Validation\Checks\RoleModeIsNotDemoted;
@@ -33,6 +34,7 @@ class Validator
         private readonly TechnologyToRole $technologyToRole,
         private readonly Versions $versions,
         private readonly DoNotClaim $doNotClaim,
+        private readonly ItemsBelongToTheirRole $containment,
         private readonly IndependentProjectsStayIndependent $independence,
         private readonly RoleModeIsNotDemoted $roleMode,
         private readonly PromotionIsExplained $promotions,
@@ -65,6 +67,7 @@ class Validator
             $this->technologyToRole,
             $this->versions,
             $this->doNotClaim,
+            $this->containment,
             $this->independence,
             $this->roleMode,
             $this->promotions,
