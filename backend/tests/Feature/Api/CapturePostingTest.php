@@ -79,6 +79,25 @@ class CapturePostingTest extends TestCase
         $this->assertSame(PostingStatus::Captured, $posting->status);
     }
 
+    /**
+     * A board's URL carries session keys and tracking parameters, so it passes
+     * 255 characters routinely and the column that holds it is `text`.
+     */
+    public function test_a_url_longer_than_a_varchar_is_captured_whole(): void
+    {
+        $url = 'https://jobs.example.com/vacancy/7781?'.http_build_query([
+            'refId' => str_repeat('a', 120),
+            'trackingId' => str_repeat('b', 120),
+            'alternateChannel' => 'search',
+        ]);
+
+        $this->assertGreaterThan(255, strlen($url));
+
+        $this->capture($this->payload(['url' => $url]))->assertCreated();
+
+        $this->assertSame($url, Posting::sole()->url);
+    }
+
     public function test_metadata_the_page_did_not_offer_is_stored_as_absent(): void
     {
         $this->capture($this->payload([

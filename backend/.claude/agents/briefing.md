@@ -279,6 +279,12 @@ deliberately, and not to be made to agree.
 - **`llm_batches`** — provider batch ID, state, submitted/ended times, request
   count, linked revisions.
 
+**A posting's URL is `text`, not a varchar.** A job board's URL carries session
+keys and tracking parameters, and passes 255 characters routinely. SQLite
+enforces no varchar width, so a narrower column holds everything right up until
+the first database that does enforce one — and moving to one of those is meant
+to be a configuration change rather than a data loss.
+
 ### Revisions are immutable once complete
 
 A revision that has reached `ready` or `failed` is never updated. Editing or
