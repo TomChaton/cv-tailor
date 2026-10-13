@@ -1,5 +1,7 @@
 <?php
 
+use App\Observability\Status\BatchesSection;
+use App\Observability\Status\LlmSection;
 use App\Observability\Status\MasterCvSection;
 use App\Observability\Status\PostingsSection;
 use App\Observability\Status\ProcessesSection;
@@ -84,14 +86,30 @@ return [
         'fixture_path' => base_path('tests/Fixtures/llm'),
     ],
 
+    'batches' => [
+        // How long a batch may stay open before the poller warns about it.
+        // The provider's results expire, and a batch that is never collected
+        // is work that was paid for and thrown away, so this wants to be well
+        // inside the provider's own expiry rather than next to it.
+        'stale_after_minutes' => (int) env('CV_BATCH_STALE_AFTER_MINUTES', 360),
+
+        // How many attempts a revision gets before it is failed. An attempt is
+        // spent by the provider failing to serve a request, never by it
+        // refusing one: a request we built wrongly is not the revision's
+        // fault, so it costs no attempt.
+        'attempt_limit' => (int) env('CV_BATCH_ATTEMPT_LIMIT', 3),
+    ],
+
     // `cv:status` renders these in order. A new area appends its own section
     // and leaves the ones above it alone.
     'status_sections' => [
         ProcessesSection::class,
         QueueSection::class,
         MasterCvSection::class,
+        LlmSection::class,
         PostingsSection::class,
         RevisionsSection::class,
+        BatchesSection::class,
     ],
 
 ];

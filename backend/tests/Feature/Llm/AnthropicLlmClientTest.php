@@ -40,7 +40,7 @@ class AnthropicLlmClientTest extends TestCase
             // SDK's own deserialisation and the error translation are all
             // exercised, and no socket is opened. `maxRetries: 0` keeps a
             // failing status from being retried behind the test's back.
-            new Client(
+            fn (): Client => new Client(
                 apiKey: 'test-key',
                 requestOptions: ['transporter' => $transporter, 'maxRetries' => 0],
             ),

@@ -33,3 +33,29 @@ Schedule::call(function (): void {
     ->everyFiveMinutes()
     ->name('cv:queue')
     ->withoutOverlapping();
+
+// Submitting and polling each run every five minutes, for the reason queueing
+// does: nothing in this system is interactive, and a batch takes as long as it
+// takes. Both run in this process rather than through `Schedule::command()`,
+// so that the events they write reach `docker compose logs scheduler` instead
+// of the subprocess's /dev/null.
+//
+// There is no quorum and no maximum wait. The batch API's discount applies to
+// a batch of one, so holding a revision back to wait for company would buy
+// nothing and cost it the wait.
+Schedule::call(function (): void {
+    Artisan::call('cv:batch-submit');
+})
+    ->everyFiveMinutes()
+    ->name('cv:batch-submit')
+    ->withoutOverlapping();
+
+// The poller is scheduled separately from the submitter and is never halted by
+// it: batches already in flight still need collecting, and a batch that is
+// paid for and never collected is the expensive failure here.
+Schedule::call(function (): void {
+    Artisan::call('cv:batch-poll');
+})
+    ->everyFiveMinutes()
+    ->name('cv:batch-poll')
+    ->withoutOverlapping();

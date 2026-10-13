@@ -3,6 +3,7 @@
 namespace Tests\Feature\Llm;
 
 use Anthropic\Client;
+use App\Llm\Anthropic\AnthropicLlmClient;
 use App\Llm\CostCalculator;
 use App\Llm\LlmClient;
 use App\Llm\LlmPurpose;
@@ -29,6 +30,20 @@ class LlmClientBindingTest extends TestCase
         $this->expectException(RuntimeException::class);
 
         $this->app->make(Client::class);
+    }
+
+    /**
+     * The implementation holds a factory for the SDK client, so resolving it
+     * costs nothing: a scheduled run with no work needs no credentials.
+     */
+    public function test_the_provider_implementation_builds_no_sdk_client_until_it_is_used(): void
+    {
+        $client = $this->app->make(AnthropicLlmClient::class);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('A test asked for a live LLM client.');
+
+        $client->pollBatch('msgbatch_anything');
     }
 
     public function test_the_configured_models_and_rates_are_wired_up(): void

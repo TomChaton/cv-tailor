@@ -2,6 +2,7 @@
 
 namespace App\Generation;
 
+use App\Batching\BatchRequestBuilder;
 use App\Llm\BatchRequest;
 use App\Llm\LlmPurpose;
 use App\Llm\LlmRequest;
@@ -18,7 +19,7 @@ use App\Models\Revision;
  * a fixed prefix in front of it and the only thing that changes between two
  * requests is the part after the breakpoint.
  */
-class BuildGenerationRequest
+class BuildGenerationRequest implements BatchRequestBuilder
 {
     public function __construct(
         private readonly MasterCvParser $parser,

@@ -2,6 +2,9 @@
 
 namespace Tests\Feature\Console;
 
+use App\Batching\LlmBatchState;
+use App\Batching\SubmitterHalt;
+use App\Models\LlmBatch;
 use App\Models\Posting;
 use App\Models\Revision;
 use App\Observability\HeartbeatStore;
@@ -144,6 +147,34 @@ class CvStatusCommandTest extends TestCase
     }
 
     /**
+     * A precondition the owner can see and fix, rather than a stack trace from
+     * every scheduled run.
+     */
+    public function test_it_reports_whether_the_api_key_is_configured(): void
+    {
+        config(['cv.llm.api_key' => '']);
+
+        $this->assertSame(Command::SUCCESS, Artisan::call('cv:status'));
+
+        $output = Artisan::output();
+
+        $this->assertStringContainsString('api key', $output);
+        $this->assertStringContainsString('not set: put ANTHROPIC_API_KEY in .env', $output);
+    }
+
+    public function test_it_says_the_api_key_is_set_without_printing_any_of_it(): void
+    {
+        config(['cv.llm.api_key' => 'sk-ant-secret-value']);
+
+        $this->assertSame(Command::SUCCESS, Artisan::call('cv:status'));
+
+        $output = Artisan::output();
+
+        $this->assertStringContainsString('api key', $output);
+        $this->assertStringNotContainsString('secret', $output);
+    }
+
+    /**
      * An empty state has to be visible rather than absent: a status missing
      * from the report cannot be told apart from one that has been renamed.
      */
@@ -164,17 +195,70 @@ class CvStatusCommandTest extends TestCase
         $command->assertSuccessful();
     }
 
+    public function test_it_reports_every_batch_state_and_a_running_submitter(): void
+    {
+        $this->assertSame(Command::SUCCESS, Artisan::call('cv:status'));
+
+        $output = Artisan::output();
+
+        $this->assertStringContainsString('Batches', $output);
+        $this->assertStringContainsString('submitter', $output);
+        $this->assertStringContainsString('running', $output);
+        $this->assertStringContainsString('oldest open', $output);
+        $this->assertStringContainsString('none', $output);
+
+        // An empty state has to be visible rather than absent.
+        foreach (LlmBatchState::values() as $state) {
+            $this->assertStringContainsString($state, $output);
+        }
+    }
+
+    /**
+     * A stopped submitter has to be the first thing a reader sees, rather than
+     * something inferred from a pile of pending revisions that are not moving.
+     */
+    public function test_it_reports_a_halted_submitter_and_the_way_back(): void
+    {
+        $halt = $this->app->make(SubmitterHalt::class);
+        $halt->recordFullyInvalid(3);
+        $halt->recordFullyInvalid(4);
+
+        $this->assertSame(Command::SUCCESS, Artisan::call('cv:status'));
+
+        $output = Artisan::output();
+
+        $this->assertStringContainsString('halted: run php artisan cv:batch-resume', $output);
+        $this->assertStringContainsString('batches 3, 4', $output);
+    }
+
+    public function test_it_calls_out_the_batch_that_has_been_open_longest(): void
+    {
+        $oldest = LlmBatch::factory()->create(['submitted_at' => CarbonImmutable::now()->subHours(3)]);
+        LlmBatch::factory()->create();
+        LlmBatch::factory()->inState(LlmBatchState::Collected)->create();
+
+        $this->assertSame(Command::SUCCESS, Artisan::call('cv:status'));
+
+        $this->assertStringContainsString(
+            'batch '.$oldest->id.', submitted 3 hours ago',
+            Artisan::output(),
+        );
+    }
+
     public function test_the_new_sections_leave_the_ones_above_them_alone(): void
     {
         Posting::factory()->create();
         Revision::factory()->create();
+        LlmBatch::factory()->create();
 
         $this->artisan('cv:status')
             ->expectsOutputToContain('Processes')
             ->expectsOutputToContain('Queue')
             ->expectsOutputToContain('Master CV')
+            ->expectsOutputToContain('LLM')
             ->expectsOutputToContain('Postings')
             ->expectsOutputToContain('Revisions')
+            ->expectsOutputToContain('Batches')
             ->assertSuccessful();
     }
 }
