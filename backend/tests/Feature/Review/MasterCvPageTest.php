@@ -5,6 +5,7 @@ namespace Tests\Feature\Review;
 use App\Filament\Pages\MasterCv as MasterCvPage;
 use App\MasterCv\Ids\AssignMasterCvIds;
 use App\MasterCv\InspectMasterCv;
+use App\MasterCv\Lint\Finding;
 use App\Models\MasterCv;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -160,6 +161,74 @@ class MasterCvPageTest extends TestCase
             ]);
     }
 
+    /**
+     * The line number is in the page to be acted on, so the finding that
+     * carries it is a button: reachable by keyboard, operable with it, and
+     * answering the only question the number was being asked.
+     *
+     * The selection itself is the browser's and is checked by hand.
+     */
+    public function test_a_problem_is_a_control_that_selects_the_line_it_names(): void
+    {
+        $this->signIn();
+        $this->storeMasterCv('master-cv/broken-missing-id.md');
+
+        $problem = app(InspectMasterCv::class)->handle()->problemsByCheck()['ids'][0];
+        $this->assertNotNull($problem->line);
+
+        $control = $this->control($this->render(), $problem->line);
+
+        $this->assertStringContainsString('type="button"', $control);
+        $this->assertStringContainsString(e($this->findingText($problem)), $control);
+    }
+
+    /**
+     * A note names a line for the same reason a problem does, and the fact
+     * that it does not fail the CV has nothing to do with finding it.
+     */
+    public function test_a_note_is_a_control_that_selects_the_line_it_names(): void
+    {
+        $this->signIn();
+        $this->storeMasterCv();
+
+        $note = app(InspectMasterCv::class)->handle()->notes()[0];
+        $this->assertNotNull($note->line);
+
+        $control = $this->control($this->render(), $note->line);
+
+        $this->assertStringContainsString('type="button"', $control);
+        $this->assertStringContainsString(e($this->findingText($note)), $control);
+    }
+
+    public function test_a_cv_with_no_problems_and_no_notes_has_no_controls(): void
+    {
+        $this->signIn();
+        $this->storeMasterCv('master-cv/minimal.md');
+
+        $this->assertSame([], $this->controls($this->render()));
+    }
+
+    /**
+     * There is nothing to select, so there is nothing to press. A control
+     * that did nothing would be worse than the sentence it replaced.
+     */
+    public function test_a_finding_that_names_no_line_is_not_a_control(): void
+    {
+        $this->signIn();
+        $this->storeMasterCv('master-cv/broken-missing-section.md');
+
+        $problem = app(InspectMasterCv::class)->handle()->problemsByCheck()['sections'][0];
+        $this->assertNull($problem->line);
+
+        $html = $this->render();
+
+        $this->assertStringContainsString(e($problem->message), $html);
+
+        foreach ($this->controls($html) as $control) {
+            $this->assertStringNotContainsString(e($problem->message), $control);
+        }
+    }
+
     public function test_saving_stores_what_was_typed(): void
     {
         $this->signIn();
@@ -268,5 +337,46 @@ class MasterCvPageTest extends TestCase
     private function signIn(): void
     {
         $this->actingAs(User::factory()->create());
+    }
+
+    private function render(): string
+    {
+        return $this->get(MasterCvPage::getUrl())->assertSuccessful()->getContent() ?: '';
+    }
+
+    /**
+     * The control that selects a given line, markup and all.
+     */
+    private function control(string $html, int $line): string
+    {
+        $matched = preg_match(
+            '#<button[^>]*x-on:click="selectLine\('.$line.'\)"[^>]*>.*?</button>#s',
+            $html,
+            $matches,
+        );
+
+        $this->assertSame(1, $matched, 'No control selects line '.$line.'.');
+
+        return $matches[0];
+    }
+
+    /**
+     * Every control on the page that selects a line.
+     *
+     * @return list<string>
+     */
+    private function controls(string $html): array
+    {
+        preg_match_all('#<button[^>]*x-on:click="selectLine\(\d+\)"[^>]*>.*?</button>#s', $html, $matches);
+
+        return $matches[0];
+    }
+
+    private function findingText(Finding $finding): string
+    {
+        return (string) __('master-cv.finding', [
+            'line' => $finding->line,
+            'message' => $finding->message,
+        ]);
     }
 }

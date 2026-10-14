@@ -1216,6 +1216,30 @@ lint finding against it.
 - **The problems sit beside the editor, each with its line number.** The loop
   that matters is seeing a problem and fixing it, and a loop that leaves the
   page is a loop nobody closes.
+- **A finding is a control, and activating it selects the line it names.**
+  Notes as well as problems: one fails the CV and the other does not, and
+  neither fact has anything to do with finding the line. A finding that names
+  no line stays a sentence, because a control that did nothing when it was
+  pressed would be worse than no control at all.
+- **The editor has no gutter of line numbers, and should not grow one.** A
+  master CV holds lines long enough to wrap, and a column of numbers beside
+  wrapped text stops agreeing with it at the first one that does. Selecting
+  the line answers the only question the number was being read for, and the
+  browser's own selection is the highlight, so nothing is drawn.
+- **A text area does not scroll to a selection a script made.** It scrolls for
+  a caret the person moved, and for nothing else. Where a line begins is
+  therefore measured in a hidden copy of the editor holding the text above it:
+  a copy wraps where the editor wraps, which a line height multiplied by a
+  line number does not.
+- **A finding may name a line that is no longer there.** The findings are the
+  last lint's and the editor holds whatever has been typed since, so a line
+  past the end of the text selects nothing and nothing asks whether the line
+  still says what it said. Saving re-lints, and that is what makes the list
+  true again.
+- **The page's interactivity is Alpine, written inline.** The panel already
+  ships Alpine, and this application has no front-end build to add a bundle
+  to: a code editor component would be asking for one. Inline also means
+  there is no asset to publish and so no deployment step to forget.
 - **Saving re-lints, and a CV that fails lint still saves.** The reasoning is
   with the linter, above. The page therefore never refuses a save and never
   says a CV is unusable in its own words — the problems say that.
