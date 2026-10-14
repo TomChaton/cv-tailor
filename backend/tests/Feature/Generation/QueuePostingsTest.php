@@ -233,6 +233,47 @@ class QueuePostingsTest extends TestCase
         $this->assertDatabaseCount('revisions', 0);
     }
 
+    /**
+     * The other half of the gate. The page's own text is not a job
+     * description, so a posting there is nothing to tailor against yet waits
+     * rather than being generated from the navigation and the sidebar.
+     */
+    public function test_a_wanted_posting_with_no_description_is_not_queued(): void
+    {
+        $posting = Posting::factory()->wanted()->awaitingExtraction()->create();
+
+        $outcome = $this->queue()->handle();
+        $this->queue()->handle();
+
+        $this->assertSame(0, $outcome->postings);
+        $this->assertDatabaseCount('revisions', 0);
+        $this->assertSame(PostingStatus::Wanted, $posting->refresh()->status);
+        $this->assertNull($posting->current_revision_id);
+    }
+
+    /**
+     * It waits rather than failing, so nothing has to be retried by hand: the
+     * posting stays at `wanted` and the first sweep after a description
+     * arrives picks it up.
+     */
+    public function test_it_queues_the_posting_on_the_first_sweep_after_extraction_fills_it(): void
+    {
+        $posting = Posting::factory()->wanted()->awaitingExtraction()->create();
+
+        $this->assertSame(0, $this->queue()->handle()->postings);
+
+        $posting->fill([
+            'description' => 'We need someone who has run a dispatch platform.',
+            'extracted_at' => now(),
+        ])->save();
+
+        $outcome = $this->queue()->handle();
+
+        $this->assertSame(1, $outcome->postings);
+        $this->assertSame($posting->id, Revision::query()->sole()->posting_id);
+        $this->assertSame(PostingStatus::Queued, $posting->refresh()->status);
+    }
+
     public function test_an_unchanged_cv_reuses_the_version_already_stored(): void
     {
         Posting::factory()->wanted()->create();

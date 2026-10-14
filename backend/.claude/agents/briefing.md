@@ -594,10 +594,10 @@ the company, the location, the salary and the job description itself.
 - **A field neither source gives is left null.** The postings list shows a null
   as absent, and guessing is what extraction replaces rather than what it
   introduces.
-- **The description the model returns is what generation tailors against.** A
-  posting whose extraction has not run, or could not, falls back to the page's
-  own text: it is still a posting the owner may ask for a CV for, and the page
-  is the only material there is for one.
+- **The description the model returns is what generation tailors against, and
+  the only thing it ever will.** There is no fallback to the page's own text.
+  A posting that has none waits instead of being generated from, and the
+  reasoning is under Queueing.
 - **Nothing the model returns is an instruction.** Its description is tailored
   against exactly as a job description already is, and the prompt that produced
   it states that the page is material to read rather than instructions to
@@ -609,12 +609,17 @@ the company, the location, the salary and the job description itself.
   changed.
 - **A failure never loses a posting.** The posting stays listed with its fields
   absent and `extracted_at` null, and it is markable as wanted regardless — a
-  posting the owner recognises from its URL is still worth a CV. The job logs
-  the failure and rethrows, so the queue retries it on its own terms.
+  posting the owner recognises from its URL is still worth a CV, and marking it
+  records that decision rather than starting a generation. The job logs the
+  failure and rethrows, so the queue retries it on its own terms, and the sweep
+  acts on the marking once there is a description.
 - **A posting already extracted is left alone.** A duplicate dispatch is the
   ordinary consequence of a retried job, and a second reading of the same page
   would be paid for twice to reach the same answer. `extracted_at` is what the
-  guard reads, and it is also what `cv:status` counts.
+  guard reads, and it is also what tells a posting extraction has not reached
+  from one it read and found no job in: `cv:status` counts the postings with no
+  description and breaks that count down by it, because the first calls for a
+  look at the worker and the second for discarding the posting.
 
 ### The OpenAPI document
 
@@ -659,6 +664,18 @@ to be generated from.
   `cv:queue` exits non-zero for whoever ran it by hand. The warning is the
   whole alarm: a scheduled run does not also report a failure, which would
   name no command and carry a stack trace that is all framework.
+- **A posting is queued only once there is a job description to tailor
+  against.** The page's own text is not a job description — it carries the
+  navigation, the footer and, on a job board, a sidebar of other people's
+  adverts — so a CV tailored against it is tailored to a job the owner never
+  captured, while reading exactly like a good one. Nothing downstream can
+  detect that, because every check a generated CV faces is about the master CV
+  rather than about the job. So a posting whose extraction has not run, or ran
+  and found no description, waits at `wanted`: the same shape as a master CV
+  that fails its lint, and for the same reason — the first sweep after a
+  description arrives picks it up with nothing to retry by hand. `cv:status`
+  counts what is waiting that way, so one line answers why nothing has
+  generated.
 - **A run with no work does not read the CV at all.** A CV mid-edit is not
   worth an alarm until something is waiting on it.
 - **The CV is parsed once per run, not once per posting.** A run that queues

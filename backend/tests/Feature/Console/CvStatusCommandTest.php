@@ -213,12 +213,16 @@ class CvStatusCommandTest extends TestCase
     }
 
     /**
-     * Extraction is a queued job per capture, so a worker that has stopped
-     * shows up as a count that does not come down.
+     * The count generation's sweep waits on, which is a job description and
+     * not `extracted_at`: a posting extraction answered without one is not
+     * queued either, so a count that missed it would read zero while nothing
+     * generated. Extraction is a queued job per capture, so a worker that has
+     * stopped is a count that does not come down.
      */
-    public function test_it_reports_how_many_postings_are_awaiting_extraction(): void
+    public function test_it_reports_how_many_postings_have_no_job_description(): void
     {
         Posting::factory()->count(2)->awaitingExtraction()->create();
+        Posting::factory()->create(['description' => null]);
         Posting::factory()->create();
 
         $this->assertSame(Command::SUCCESS, Artisan::call('cv:status'));
@@ -226,8 +230,10 @@ class CvStatusCommandTest extends TestCase
         $output = Artisan::output();
 
         $this->assertStringContainsString('Extraction', $output);
-        $this->assertMatchesRegularExpression('/awaiting extraction[\s.]+2/', $output);
-        $this->assertMatchesRegularExpression('/extracted[\s.]+1/', $output);
+        $this->assertMatchesRegularExpression('/awaiting a job description[\s.]+3/', $output);
+        $this->assertMatchesRegularExpression('/extraction has not run[\s.]+2/', $output);
+        $this->assertMatchesRegularExpression('/extraction found none[\s.]+1/', $output);
+        $this->assertMatchesRegularExpression('/with a job description[\s.]+1/', $output);
     }
 
     public function test_the_new_sections_leave_the_ones_above_them_alone(): void

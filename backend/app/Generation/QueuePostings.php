@@ -23,11 +23,20 @@ use Illuminate\Database\ConnectionInterface;
  * spend is the owner's and is made explicitly. A captured posting nobody has
  * asked for stays where it is for ever and costs nothing.
  *
+ * **It takes only a posting there is a job description for.** The page's own
+ * text is not a job description, and a CV tailored against a page's navigation
+ * and its sidebar of other people's adverts is wrong in a way nothing
+ * downstream can detect. A posting whose extraction has not run, or ran and
+ * found none, therefore waits at `wanted` and is counted by `cv:status` while
+ * it does.
+ *
  * This is a step of its own rather than part of capture because it needs a
  * master CV that parses and lints, and capture must succeed without one: a
  * posting found while the CV is mid-edit is still a posting worth having. So a
  * CV that cannot be used leaves every posting exactly where it was, and the
- * first run after it is fixed picks up everything that was waiting.
+ * first run after it is fixed picks up everything that was waiting. A posting
+ * waiting for a description waits the same way, for the same reason: nothing
+ * is lost and nothing has to be retried by hand.
  */
 class QueuePostings
 {
@@ -74,12 +83,13 @@ class QueuePostings
     }
 
     /**
-     * Postings at `wanted` that carry no revision, oldest first.
+     * Postings at `wanted` that have a job description and no revision, oldest
+     * first.
      *
-     * Identifiers rather than models: a posting holds a whole page's HTML and
+     * Identifiers rather than models: a posting holds a whole page's text and
      * none of it is needed to queue one. A posting still at `captured` is not
-     * here, nor is a discarded one, and neither is one some earlier run
-     * already gave a revision.
+     * here, nor is a discarded one, nor one some earlier run already gave a
+     * revision — and nor is one there is nothing to tailor a CV against.
      *
      * @return list<int>
      */
@@ -88,6 +98,7 @@ class QueuePostings
         /** @var list<int> */
         return Posting::query()
             ->where('status', PostingStatus::Wanted)
+            ->whereNotNull('description')
             ->whereDoesntHave('revisions')
             ->oldest('id')
             ->pluck('id')

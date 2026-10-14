@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Generation;
 
+use App\Generation\GenerationIsRefused;
 use App\Generation\JobBrief;
 use App\MasterCv\PresentationPolicy;
 use App\Models\Posting;
@@ -78,17 +79,20 @@ class JobBriefTest extends TestCase
     }
 
     /**
-     * A posting whose extraction has not run, or could not, is still worth a
-     * CV, and the page's own text is the only material there is for one.
+     * The page's own text is not a job description. It is the navigation, the
+     * footer and a sidebar of other people's adverts as well, and a CV
+     * tailored against it is tailored to a job nobody captured.
      */
-    public function test_a_posting_nothing_was_extracted_from_falls_back_to_the_page(): void
+    public function test_a_posting_with_no_description_has_no_brief(): void
     {
-        $text = $this->brief($this->posting([
-            'page_text' => 'A dispatch platform role in Manchester.',
+        $posting = $this->posting([
+            'page_text' => 'All jobs Saved Sign in. Also hiring: three other roles.',
             'description' => null,
-        ]));
+        ]);
 
-        $this->assertStringContainsString('A dispatch platform role in Manchester.', $text);
+        $this->expectException(GenerationIsRefused::class);
+
+        $this->brief($posting);
     }
 
     public function test_the_target_length_arrives_as_a_word_budget(): void
