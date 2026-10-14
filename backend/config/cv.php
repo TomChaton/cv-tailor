@@ -1,5 +1,6 @@
 <?php
 
+use App\Observability\Status\AccessSection;
 use App\Observability\Status\BatchesSection;
 use App\Observability\Status\ExtractionSection;
 use App\Observability\Status\LlmSection;
@@ -88,6 +89,25 @@ return [
         'fixture_path' => base_path('tests/Fixtures/llm'),
     ],
 
+    // The owner account and the extension's token, so a stack that is thrown
+    // away comes back up ready to sign in to and to capture with. They sit
+    // beside the LLM API key in the same file, so there is nowhere less safe
+    // for them to be.
+    //
+    // An empty value means the step it belongs to does not run; it never means
+    // a default is used. Seeding is refused where `app.env` is production: a
+    // password in a file is not how a real instance should get its owner, and
+    // there `cv:owner` and `cv:token` are run by hand.
+    'credentials' => [
+        'owner_name' => env('CV_OWNER_NAME', ''),
+        'owner_email' => env('CV_OWNER_EMAIL', ''),
+        'owner_password' => env('CV_OWNER_PASSWORD', ''),
+
+        // The plaintext the extension sends. Only its hash is stored, exactly
+        // as for a token the command generated.
+        'extension_token' => env('CV_EXTENSION_TOKEN', ''),
+    ],
+
     'batches' => [
         // How long a batch may stay open before the poller warns about it.
         // The provider's results expire, and a batch that is never collected
@@ -108,6 +128,7 @@ return [
         ProcessesSection::class,
         QueueSection::class,
         MasterCvSection::class,
+        AccessSection::class,
         LlmSection::class,
         PostingsSection::class,
         ExtractionSection::class,

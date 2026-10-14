@@ -11,6 +11,8 @@ use App\Http\Middleware\LimitRequestBody;
 use App\Http\TrustedProxies;
 use App\Observability\Listeners\RecordWorkerHeartbeat;
 use App\Observability\Status\LlmSection;
+use App\Owner\EnvironmentCredentials;
+use App\Owner\SeedCredentials;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Queue\Events\Looping;
@@ -59,6 +61,22 @@ class AppServiceProvider extends ServiceProvider
         $this->app->when(LlmSection::class)
             ->needs('$apiKey')
             ->give(fn (): string => Config::string('cv.llm.api_key'));
+
+        // Not a singleton: resolved per use, so the values are read from
+        // configuration at the moment the seeding step asks for them.
+        $this->app->bind(
+            EnvironmentCredentials::class,
+            fn (): EnvironmentCredentials => EnvironmentCredentials::from(
+                Config::string('cv.credentials.owner_name'),
+                Config::string('cv.credentials.owner_email'),
+                Config::string('cv.credentials.owner_password'),
+                Config::string('cv.credentials.extension_token'),
+            ),
+        );
+
+        $this->app->when(SeedCredentials::class)
+            ->needs('$appEnv')
+            ->give(fn (): string => Config::string('app.env'));
 
         $this->app->when(PollBatches::class)
             ->needs('$staleAfterMinutes')

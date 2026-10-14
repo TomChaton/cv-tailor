@@ -227,13 +227,37 @@ All of these run from the repository root.
 4. `docker compose up -d --build`.
 5. `docker compose exec app php artisan cv:owner` to create the account the
    review UI is entered with, then
-   `docker compose exec app php artisan cv:token` for the extension's token.
+   `docker compose exec app php artisan cv:token` for the extension's token. A
+   stack whose `.env` names them needs neither — see below.
 6. The master CV. Write or paste it on the Master CV page in the review UI.
    Somebody who already has one as a file copies it in and imports it:
    `docker compose cp master-cv.md app:/tmp/master-cv.md`, then
    `docker compose exec app php artisan cv:import /tmp/master-cv.md`. Nothing
    is generated until there is one, and `php artisan cv:status` says whether
    there is.
+
+### Credentials may come from the environment instead
+
+`CV_OWNER_NAME`, `CV_OWNER_EMAIL`, `CV_OWNER_PASSWORD` and
+`CV_EXTENSION_TOKEN` name the owner account and the extension's token, and the
+`app` role applies them on boot, after migrating.
+
+They buy a stack that comes back up ready: a database discarded with `down -v`
+otherwise costs both credentials again, and the extension costs them twice over
+because a freshly generated token has to be pasted into the browser before it
+will send anything. Only the token's hash is ever stored, so a token the owner
+chose is held no more weakly than one the command generated — and because the
+plaintext is the owner's own, an extension configured once goes on capturing
+against a database built again. They already sit beside the LLM API key in the
+same file, so putting them there costs no secrecy.
+
+**An empty variable means its step does not run.** It does not mean the step
+runs and fails, and it never means a default is used.
+
+**Seeding is refused where `APP_ENV` is production.** A password sitting in a
+file is not how a real instance should get its owner, so the convenience stops
+at the edge of one. `cv:owner` and `cv:token` are unaffected there and are how
+an instance somebody else hosts is set up.
 
 ### Afterwards
 

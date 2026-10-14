@@ -2,9 +2,12 @@
 
 namespace App\Console\Commands;
 
+use App\Owner\EnvironmentCredentials;
 use App\Owner\IssueExtensionToken;
 use App\Owner\OwnerAccount;
+use App\Owner\StoreExtensionToken;
 use Illuminate\Console\Command;
+use Illuminate\Validation\ValidationException;
 
 class CvTokenCommand extends Command
 {
@@ -12,8 +15,12 @@ class CvTokenCommand extends Command
 
     protected $description = 'Issue a bearer token for the extension and print it once.';
 
-    public function handle(OwnerAccount $owners, IssueExtensionToken $issue): int
-    {
+    public function handle(
+        OwnerAccount $owners,
+        IssueExtensionToken $issue,
+        StoreExtensionToken $store,
+        EnvironmentCredentials $credentials,
+    ): int {
         $owner = $owners->find();
 
         if ($owner === null) {
@@ -23,7 +30,25 @@ class CvTokenCommand extends Command
         }
 
         $name = $this->option('name');
-        $name = is_string($name) && $name !== '' ? $name : 'extension';
+        $name = is_string($name) && $name !== '' ? $name : StoreExtensionToken::DEFAULT_NAME;
+
+        if ($credentials->hasExtensionToken()) {
+            try {
+                $store->handle($owner, $name, $credentials->extensionToken);
+            } catch (ValidationException $e) {
+                foreach ($e->validator->errors()->all() as $message) {
+                    $this->components->error($message);
+                }
+
+                return self::FAILURE;
+            }
+
+            // A token it was given is one the owner already has, so there is
+            // no reason to repeat it.
+            $this->components->info('Extension token stored from CV_EXTENSION_TOKEN.');
+
+            return self::SUCCESS;
+        }
 
         $this->newLine();
         $this->line($issue->handle($owner, $name));

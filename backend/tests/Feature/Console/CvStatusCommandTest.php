@@ -7,7 +7,9 @@ use App\Batching\SubmitterHalt;
 use App\Models\LlmBatch;
 use App\Models\Posting;
 use App\Models\Revision;
+use App\Models\User;
 use App\Observability\HeartbeatStore;
+use App\Owner\IssueExtensionToken;
 use App\Postings\PostingStatus;
 use App\Revisions\RevisionStatus;
 use Carbon\CarbonImmutable;
@@ -41,6 +43,30 @@ class CvStatusCommandTest extends TestCase
         $this->artisan('cv:status')
             ->doesntExpectOutputToContain('never reported')
             ->expectsOutputToContain('5 minutes ago')
+            ->assertSuccessful();
+    }
+
+    /**
+     * A review UI nobody has an account for and an API nothing holds a token
+     * for look exactly like a stack that is working, so both say so here.
+     */
+    public function test_it_reports_a_stack_nobody_can_get_into(): void
+    {
+        $this->artisan('cv:status')
+            ->expectsOutputToContain('Access')
+            ->expectsOutputToContain('none: run php artisan cv:owner')
+            ->expectsOutputToContain('none: run php artisan cv:token')
+            ->assertSuccessful();
+    }
+
+    public function test_it_reports_an_owner_and_a_token_once_they_are_there(): void
+    {
+        app(IssueExtensionToken::class)->handle(User::factory()->create(), 'extension');
+
+        $this->artisan('cv:status')
+            ->expectsOutputToContain('Access')
+            ->doesntExpectOutputToContain('none: run php artisan cv:owner')
+            ->doesntExpectOutputToContain('none: run php artisan cv:token')
             ->assertSuccessful();
     }
 

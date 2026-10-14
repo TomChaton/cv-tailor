@@ -1558,6 +1558,7 @@ toolchain:
 | What the stack is doing | `docker compose exec app php artisan cv:status` |
 | Create or update the owner | `docker compose exec app php artisan cv:owner` |
 | Issue an extension token | `docker compose exec app php artisan cv:token` |
+| Seed both from the environment | `docker compose exec app php artisan cv:seed-credentials` |
 | Check the master CV | `docker compose exec app php artisan cv:lint` |
 | Import a master CV from a file | `docker compose exec app php artisan cv:import /tmp/master-cv.md` |
 | Queue the postings marked as wanted | `docker compose exec app php artisan cv:queue` |
@@ -1567,8 +1568,33 @@ toolchain:
 | Add the IDs the master CV is missing | `docker compose exec app php artisan cv:id > master-cv-with-ids.md` |
 | See the master CV through the CV template | `docker compose exec app php artisan cv:preview /tmp/cv-preview.pdf` |
 
-`cv:owner` prompts, and takes `--name`, `--email` and `--password` when a
-script needs it. `cv:token` prints the token once; only its hash is stored.
+`cv:owner` takes `--name`, `--email` and `--password`; where a flag is absent
+it reads the matching `CV_OWNER_*` variable, and where neither is there it
+prompts. The rules those values are held to live in the action rather than in
+the command, so a flag, a prompt and the environment are all held to the same
+ones.
+
+`cv:token` prints a token it generated once, and only its hash is stored. Given
+`CV_EXTENSION_TOKEN` it stores the hash of that token instead and prints
+nothing — a token it was *given* is one the owner already has, so it has no
+reason to repeat it — and it replaces the token of that name rather than adding
+one, because a step that runs on every boot must not cost a row on every boot.
+
+**A token the owner chose carries no `|`.** Sanctum reads a pipe as the token's
+own id and finds the row by that id, and a database built again does not hand
+out the same ids. A token meant to outlive a `down -v` is exactly the one that
+cannot depend on one, so a pipe is refused rather than stored.
+
+`cv:seed-credentials` is the step the `app` role's entrypoint runs after
+migrating; the entrypoint is shell, and it names no credential, because the
+command reads the environment itself. Every outcome is a log event and none is
+printed, so neither the password nor the token can reach a terminal or a log.
+An unset variable means its step does not run rather than runs and fails, and
+seeding is refused where `APP_ENV` is production — a password in a file is not
+how a real instance should get its owner, and there `cv:owner` and `cv:token`
+are how one is set up. The command is always successful: a stack that will not
+start is a worse answer to a credential it could not use than a stack that
+starts with the reason in its log.
 
 `cv:batch-submit` and `cv:batch-poll` are scheduled as well, and run by hand
 when somebody wants the answer now. `cv:batch-resume` is the only way to clear
@@ -1617,6 +1643,13 @@ goes where it is told, which has to be somewhere writable, and
   longer of the two, or a job that is merely slow is handed to a second worker
   while the first is still working on it, and the pipeline's jobs are the slow
   ones. Change either number and change both.
+- **A test that drives `queue:work` states the worker's memory ceiling.** The
+  worker measures the whole PHP process, and under a test that process is the
+  suite, so a worker left on its default finds itself already over the limit
+  and stops partway through the queue. The jobs it never reached then read as
+  work nothing asked for — a collaborator that was never called rather than a
+  worker that stopped early — which is why the symptom is a test that passes
+  on its own and fails in the suite.
 - **A mistyped column name is a silent zero on SQLite**, which is why a count
   is guarded rather than trusted. SQLite reads a double-quoted identifier that
   matches no column as a string literal, so counting `status` on a table whose
