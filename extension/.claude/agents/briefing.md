@@ -6,8 +6,9 @@ The Chrome extension. Read the system briefing first; this one assumes it.
 
 **Capture a job description and send it to the backend. Nothing else.** No
 generation, preview, review or editing happens in the extension. Keeping it
-this small means it rarely changes, and changes to job-board markup are the
-only thing that should routinely require a new build.
+this small means it rarely changes. It reads a page for its text and not for
+its meaning, so a board rearranging its markup is not a reason for a new
+build.
 
 ## Platform
 
@@ -38,36 +39,18 @@ only thing that should routinely require a new build.
   keyboard shortcut) on a job's detail view. The shortcut is bound to
   `_execute_action` rather than to a command of its own, so the two triggers
   are one path and cannot drift apart.
-- **Extraction is layered**: a small per-site extractor keyed on hostname for
-  the job boards in regular use, falling back to a generic article extractor
-  (Mozilla Readability) everywhere else. Site extractors are isolated modules,
-  one per site, so a broken site is fixed without touching the others.
-- **Only visible text is sent as the job description.** Extraction reads
-  rendered text (`innerText`, skipping hidden elements), not `textContent`.
-  If the container held hidden text, the capture says so. Hidden text in a
-  listing is sometimes aimed at AI tools, and the owner should know.
-- **The raw HTML of the extracted container is sent too**, so the backend can
-  re-extract later as extractors improve.
-- Metadata (title, company, location, salary) is taken where the page
-  exposes it — structured data first (`JobPosting` JSON-LD), then the site
-  extractor — and omitted rather than guessed. A heading that looks like a job
-  title is a guess, so the generic extractor reads metadata from JSON-LD and
-  from nowhere else. A salary stated as a `MonetaryAmount` is joined as it
-  stands: writing "per year" would put an English word in a data field, and
-  rounding the numbers would change what the board said.
-- The payload follows the API contract in the system briefing. The client is
-  generated from the backend's OpenAPI document and never hand-written.
-
-### How the generic extractor finds the job description
-
-- **Readability reads a marked clone, and its answer names a live element.**
-  Readability rewrites the document it is given, so it is handed a clone whose
-  every element carries a data attribute naming its live counterpart; the live
-  element that contains everything Readability kept is the container. Its own
-  output is a cleaned copy, which is no use as the raw HTML the backend
-  re-extracts from, and it hands back no node to ask about.
-- **Hidden elements are removed from that clone before Readability sees it**, so
-  text a reader cannot see cannot steer which part of the page is chosen.
+- **The extension sends the page and judges nothing about it.** Finding the job
+  description on an arbitrary page is a judgement rather than a parse, and a
+  judgement made here cannot be revisited: what was not sent cannot be
+  re-read. So the whole page's visible text goes, and the backend asks a model
+  what it advertises.
+- **There is therefore no "nothing found".** Any page the owner chose to
+  capture is a page worth capturing, and there is no floor on how much text it
+  has to hold.
+- **Only visible text is sent.** Reading uses rendered text (`innerText`,
+  skipping hidden elements), not `textContent`. If the page held hidden text,
+  the capture says so. Hidden text in a listing is sometimes aimed at AI tools,
+  and the owner should know.
 - **Visible text is read with `innerText`, but only on a subtree that holds
   nothing hidden.** `innerText` is the browser's own answer to what a page says
   and so is what it is read with — but it includes text that is merely clipped
@@ -76,17 +59,24 @@ only thing that should routinely require a new build.
   hidden parts dropped.
 - **`aria-hidden` does not count as hidden.** It hides an element from
   assistive technology, not from the person looking at the page.
-- **There is a floor on the extracted text.** Readability hands back its best
-  attempt even when it is sure of nothing, so a page whose visible article text
-  is shorter than any job description is treated as nothing found. Without it a
-  sign-in page captures as a posting.
-- **The extractor is injected in two steps.** `executeScript` hands back the
-  value of a function it is given, but that function is serialised to source and
-  so cannot close over a bundled dependency — and injecting a *file* hands
-  nothing back at all. So the bundled extractor is injected as a file that
+- **The page's `JobPosting` JSON-LD is sent as the page wrote it**, where the
+  page published one. What its fields mean is the backend's to decide: reading
+  schema.org is a judgement about data, and nothing here looks at a single
+  field of it. A page with broken JSON-LD is a page that stated nothing rather
+  than a failed capture.
+- **The page reader is injected in two steps.** `executeScript` hands back the
+  value of a function it is given, but that function is serialised to source
+  and so cannot close over a bundled module — and injecting a *file* hands
+  nothing back at all. So the bundled reader is injected as a file that
   publishes itself under a known name, and a second, self-contained injection
-  calls it. Both land in the same isolated world, which is how the name is there
-  to be found.
+  calls it. Both land in the same isolated world, which is how the name is
+  there to be found.
+- **A page the extension may not touch is the one thing left that can fail
+  before the backend is involved.** A Chrome page, the web store or a PDF
+  refuses injection, and that is a fact about access rather than about what the
+  page holds.
+- The payload follows the API contract in the system briefing. The client is
+  generated from the backend's OpenAPI document and never hand-written.
 
 ## The API client
 
@@ -118,16 +108,17 @@ reading those from storage is the options page's job.
   active tab; the work itself happens in the service worker, because the popup
   closes the moment the owner clicks away and a capture must not close with it.
 - **The popup shows one line**: what happened — saved, already saved, not
-  configured, nothing found on the page, or what the backend said. A second line
-  appears only while the capture is still waiting to be sent, and a way into the
-  settings only when there are none.
+  configured, a page it may not read, or what the backend said. There is no
+  "nothing found on the page": whether a page holds a job description is the
+  backend's judgement. A second line appears only while the capture is still
+  waiting to be sent, and a way into the settings only when there are none.
 - **The badge shows what is outstanding.** A count while captures wait to be
   sent, because that is the one thing the owner cannot find out any other way;
   with nothing waiting, a mark for the last capture — one for landed, one for
   needing the owner. The popup is gone seconds after it opens, so the badge is
   what is left to read.
-- Failure says what the user can act on: not configured, backend unreachable,
-  token rejected, nothing found on the page.
+- Failure says what the user can act on: not configured, the page cannot be
+  read, backend unreachable, token rejected.
 - Every word comes from `_locales/en_GB/messages.json`, the badge's marks
   included.
 
@@ -166,31 +157,30 @@ reading those from storage is the options page's job.
 ## Observability
 
 - Every log line in the service worker and content scripts is prefixed
-  `[cv-tailor]` and names the step: extractor chosen, extraction result size,
-  hidden text found, send attempted, send result, retry queued and the queue's
-  depth.
+  `[cv-tailor]` and names the step: page text size, whether the page published
+  a `JobPosting` object, hidden text found, send attempted, send result, retry
+  queued and the queue's depth.
 - **What happens in the page is reported in both consoles**: once in the page's
-  own, and once in the service worker's from what the extractor handed back. An
+  own, and once in the service worker's from what the page reader handed back. An
   injected script logs where it runs, and the worker's console is the only place
   that sees a capture end to end.
-- Logs never contain job description text. Sizes, outcomes and the host only.
+- Logs never contain the page's text, and never the structured data it
+  published. Sizes, outcomes and the host only.
 - To look: `chrome://extensions` → cv-tailor → service worker → Inspect.
 
 ## Testing
 
-- Each site extractor is tested against saved HTML fixtures of that site's
-  job pages. When a site's markup changes, the fix starts with a new fixture.
-  The generic extractor is tested the same way: a page with `JobPosting`
-  JSON-LD, one without, one with hidden text in the container, and one that is
-  not an article at all.
-- Fixtures are trimmed to what extraction needs and contain no personal data.
-  They are the inner HTML of `<html>` and load into the test's own document,
-  because extraction asks the browser what is visible and that needs a document
-  with its styles applied.
+- **Fixtures are pages to read text from**, not sites to recognise: a page with
+  `JobPosting` JSON-LD, one without, one with hidden text, and one that is not
+  an article at all. The last of those proves the page is sent rather than
+  refused.
+- Fixtures are trimmed to what reading a page needs and contain no personal
+  data. They are the inner HTML of `<html>` and load into the test's own
+  document, because reading a page asks the browser what is visible and that
+  needs a document with its styles applied.
 - **The tests run against a DOM implementation, not a browser.** It answers
-  `checkVisibility` and `getComputedStyle`, which is what extraction decides
-  visibility with, so a hiding technique can be proved excluded without driving
-  Chrome.
+  `checkVisibility` and `getComputedStyle`, which is what visibility is decided
+  with, so a hiding technique can be proved excluded without driving Chrome.
 
 ## Commands
 
@@ -213,8 +203,3 @@ command is in the backend briefing.
 
 The build writes `extension/dist`. Load it with `chrome://extensions` →
 Developer mode → Load unpacked → `extension/dist`.
-
-## Briefing gaps
-
-- **Supported sites.** The list of site extractors and their fixture
-  locations, once the first are built.

@@ -12,17 +12,16 @@ use App\Observability\EventLogger;
  * Event names are part of the interface, so they live here rather than at their
  * call sites and are not renamed casually.
  *
- * Nothing here carries the page's text, its HTML or its URL. The posting row
- * holds all three, and a log line that would be embarrassing in a public bug
- * report is a bug.
+ * Nothing here carries the page's text or its URL. The posting row holds both,
+ * and a log line that would be embarrassing in a public bug report is a bug.
  */
 final readonly class PostingEvents
 {
     public function __construct(private EventLogger $log) {}
 
     /**
-     * The sizes are the point. A capture whose extraction silently returned a
-     * fragment of the page is invisible in the posting and obvious here.
+     * The size is the point. A capture whose page read back as a fragment is
+     * invisible in the posting and obvious here.
      */
     public function captured(Posting $posting, PostingCapture $capture): void
     {
@@ -31,14 +30,16 @@ final readonly class PostingEvents
             'source_site' => $capture->sourceSite,
             'dedupe_hash' => $posting->dedupe_hash,
             'has_hidden_text' => $capture->hasHiddenText,
-            'raw_html_bytes' => strlen($capture->rawHtml),
-            'extracted_text_chars' => mb_strlen($capture->extractedText),
+            'page_text_chars' => mb_strlen($capture->pageText),
+            // Whether the page states its own facts decides whether extraction
+            // has anything to defer to, so it belongs beside the capture.
+            'has_json_ld' => $capture->jsonLd !== null,
         ]);
     }
 
     /**
-     * Not a failure: capture is idempotent, and a retry or a second board
-     * finding the same role is the ordinary case.
+     * Not a failure: capture is idempotent, and a retry or a second reading of
+     * the same page is the ordinary case.
      */
     public function duplicate(Posting $posting, PostingCapture $capture): void
     {
@@ -92,7 +93,7 @@ final readonly class PostingEvents
     /**
      * A warning: a rejected capture is a posting the owner thinks they have.
      *
-     * Field names only. The values are the posting's own text, and the body
+     * Field names only. The values are the page's own text, and the body
      * that carried them is gone.
      *
      * @param  list<string>  $fields

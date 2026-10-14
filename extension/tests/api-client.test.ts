@@ -18,11 +18,9 @@ type DocumentedCapture =
 const capture: DocumentedCapture = {
   url: 'https://jobs.example.com/vacancy/7781',
   source_site: 'jobs.example.com',
-  extracted_text: 'We are looking for a PHP engineer to join the platform team.',
-  raw_html: '<div class="description"><p>We are looking for a PHP engineer.</p></div>',
+  page_text: 'Senior PHP Engineer. We are looking for a PHP engineer to join the platform team.',
+  json_ld: { '@type': 'JobPosting', title: 'Senior PHP Engineer' },
   has_hidden_text: false,
-  title: 'Senior PHP Engineer',
-  company: 'Example Ltd',
 };
 
 function answer(status: number, body: unknown): Response {

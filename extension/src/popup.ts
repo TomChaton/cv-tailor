@@ -20,7 +20,7 @@ async function capture(): Promise<void> {
 
   const outcome =
     tab?.id === undefined
-      ? 'nothing-found'
+      ? 'page-unreadable'
       : await chrome.runtime.sendMessage<CaptureRequest, CaptureOutcome>({
           type: 'capture',
           tabId: tab.id,

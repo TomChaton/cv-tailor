@@ -61,8 +61,8 @@ export function createApiClient(baseUrl: string, token: string): ApiClient {
     async capturePosting(capture: PostingCapture): Promise<CapturedPosting> {
       log('capture send attempted', {
         sourceSite: capture.source_site,
-        characters: capture.extracted_text.length,
-        htmlCharacters: capture.raw_html.length,
+        characters: capture.page_text.length,
+        jsonLd: capture.json_ld !== undefined && capture.json_ld !== null,
       });
 
       let sent;

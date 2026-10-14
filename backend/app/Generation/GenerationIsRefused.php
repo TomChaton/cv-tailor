@@ -3,6 +3,7 @@
 namespace App\Generation;
 
 use App\MasterCv\Lint\LintReport;
+use App\Models\Posting;
 use App\Models\Revision;
 use RuntimeException;
 
@@ -22,6 +23,27 @@ class GenerationIsRefused extends RuntimeException
             .'Run "php artisan cv:lint" to see them.',
             $revision->id,
             count($report->problems()),
+        ));
+    }
+
+    /**
+     * A posting with no job description is not a posting there is a brief for.
+     *
+     * The page's own text is not a job description: it carries the navigation,
+     * the footer and, on the boards this exists for, a sidebar of other
+     * people's adverts. A CV tailored against that is tailored to a job nobody
+     * captured, and reads exactly like a good one — so it raises here rather
+     * than generating from whatever text the capture happened to hold.
+     *
+     * The sweep is what makes this unreachable: it takes only postings that
+     * carry a description, and this is the guard that keeps the two in step.
+     */
+    public static function postingHasNoJobDescription(Posting $posting): self
+    {
+        return new self(sprintf(
+            'Posting %d cannot be generated from: it has no job description. '
+            .'Run "php artisan cv:status" to see what is waiting for one.',
+            $posting->id,
         ));
     }
 }

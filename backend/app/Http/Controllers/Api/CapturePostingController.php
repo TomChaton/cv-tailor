@@ -14,10 +14,10 @@ class CapturePostingController extends Controller
     /**
      * Capture a posting.
      *
-     * Idempotent: a capture whose title, company and extracted text match a
-     * posting already held answers with that posting, so the extension may
-     * retry a send it never saw the answer to. **A posting this capture created
-     * answers 201; one that already existed answers 200.**
+     * Idempotent: a capture whose page text matches a posting already held
+     * answers with that posting, so the extension may retry a send it never saw
+     * the answer to. **A posting this capture created answers 201; one that
+     * already existed answers 200.**
      *
      * The response carries the posting's identity and nothing else. The
      * extension has just sent the text and does not need it back.

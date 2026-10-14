@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Http\Rules\IsJsonObject;
 use App\Postings\PostingCapture;
 use App\Postings\PostingEvents;
 use Illuminate\Contracts\Validation\Validator;
@@ -14,26 +15,21 @@ class CapturePostingRequest extends FormRequest
      * is generated from them, so a field added here reaches the extension's
      * client when the document is regenerated.
      *
-     * @return array<string, list<string>>
+     * @return array<string, list<string|IsJsonObject>>
      */
     public function rules(): array
     {
         return [
             /** The page the posting was captured from. */
             'url' => ['required', 'string', 'url:http,https', 'max:2048'],
-            /** The hostname, or the key of the extractor that read the page. */
+            /** The hostname the page was read on. */
             'source_site' => ['required', 'string', 'max:255'],
-            /** The visible text of the job description. */
-            'extracted_text' => ['required', 'string'],
-            /** The extracted container's HTML, so extraction can be re-run later. */
-            'raw_html' => ['required', 'string'],
-            /** Whether the container held text a reader cannot see. */
+            /** The page's visible text, whole and uninterpreted. */
+            'page_text' => ['required', 'string'],
+            /** The page's `JobPosting` JSON-LD object, where it published one. */
+            'json_ld' => ['nullable', new IsJsonObject],
+            /** Whether the page held text a reader cannot see. */
             'has_hidden_text' => ['required', 'boolean'],
-            /** Taken from the page where it says so, and omitted rather than guessed. */
-            'title' => ['nullable', 'string', 'max:255'],
-            'company' => ['nullable', 'string', 'max:255'],
-            'location' => ['nullable', 'string', 'max:255'],
-            'salary_text' => ['nullable', 'string', 'max:255'],
         ];
     }
 
@@ -42,19 +38,15 @@ class CapturePostingRequest extends FormRequest
         return new PostingCapture(
             url: $this->string('url')->toString(),
             sourceSite: $this->string('source_site')->toString(),
-            extractedText: $this->string('extracted_text')->toString(),
-            rawHtml: $this->string('raw_html')->toString(),
+            pageText: $this->string('page_text')->toString(),
             hasHiddenText: $this->boolean('has_hidden_text'),
-            title: $this->nullableString('title'),
-            company: $this->nullableString('company'),
-            location: $this->nullableString('location'),
-            salaryText: $this->nullableString('salary_text'),
+            jsonLd: $this->jsonLd(),
         );
     }
 
     /**
      * Named here rather than at the call site so a rejected capture is visible
-     * in the logs: without it, an extension whose extraction has broken fails
+     * in the logs: without it, an extension whose capture has broken fails
      * silently on the only side anybody is watching.
      */
     protected function failedValidation(Validator $validator): void
@@ -68,10 +60,18 @@ class CapturePostingRequest extends FormRequest
         parent::failedValidation($validator);
     }
 
-    private function nullableString(string $key): ?string
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function jsonLd(): ?array
     {
-        $value = $this->input($key);
+        $value = $this->input('json_ld');
 
-        return is_string($value) && $value !== '' ? $value : null;
+        if (! is_array($value) || $value === [] || array_is_list($value)) {
+            return null;
+        }
+
+        /** @var array<string, mixed> $value */
+        return $value;
     }
 }

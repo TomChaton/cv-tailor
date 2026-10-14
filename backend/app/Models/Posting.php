@@ -9,12 +9,15 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * A captured job posting.
  *
- * It holds the raw material of the capture and nothing worked out from it, so
- * better extraction can be re-run over postings captured long ago.
+ * `page_text` and `json_ld` are the raw material of the capture, as the page
+ * presented it. Everything else about what the posting says — its title, the
+ * company, where the work is, what it pays, and the job description itself —
+ * is extraction's answer, and `extracted_at` says whether it has been asked.
  *
  * @property-read int $id
  * @property-read string $url
@@ -23,7 +26,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property-read string|null $company
  * @property-read string|null $location
  * @property-read string|null $salary_text
- * @property-read string $extracted_text
+ * @property-read string $page_text
+ * @property-read array<string, mixed>|null $json_ld
+ * @property-read string|null $description
+ * @property-read Carbon|null $extracted_at
  * @property-read string $dedupe_hash
  * @property-read bool $has_hidden_text
  * @property-read PostingStatus $status
@@ -36,8 +42,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'company',
     'location',
     'salary_text',
-    'raw_html',
-    'extracted_text',
+    'page_text',
+    'json_ld',
+    'description',
+    'extracted_at',
     'has_hidden_text',
     'dedupe_hash',
     'status',
@@ -85,6 +93,8 @@ class Posting extends Model
     {
         return [
             'has_hidden_text' => 'boolean',
+            'json_ld' => 'array',
+            'extracted_at' => 'datetime',
             'status' => PostingStatus::class,
         ];
     }

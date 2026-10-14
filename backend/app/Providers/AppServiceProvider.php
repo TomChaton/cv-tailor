@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Batching\ApplyResult;
 use App\Batching\BatchRequestBuilder;
 use App\Batching\PollBatches;
+use App\Extraction\ExtractPosting;
 use App\Generation\BuildGenerationRequest;
 use App\Http\Middleware\LimitRequestBody;
 use App\Http\TrustedProxies;
@@ -50,6 +51,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->when(BuildGenerationRequest::class)
             ->needs('$maxTokens')
             ->give(fn (): int => Config::integer('cv.llm.max_output_tokens.generation'));
+
+        $this->app->when(ExtractPosting::class)
+            ->needs('$maxTokens')
+            ->give(fn (): int => Config::integer('cv.llm.max_output_tokens.extraction'));
 
         $this->app->when(LlmSection::class)
             ->needs('$apiKey')

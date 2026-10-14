@@ -16,8 +16,8 @@ return [
     'label' => 'Job',
     'label_plural' => 'Jobs',
 
-    // What capture did not find. Capture omits rather than guesses, and a
-    // blank cell cannot be told from a value that is blank.
+    // What neither the page nor extraction gave. Neither guesses, and a blank
+    // cell cannot be told from a value that is blank.
     'absent' => '—',
 
     'columns' => [

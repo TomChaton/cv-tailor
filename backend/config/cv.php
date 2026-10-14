@@ -1,6 +1,7 @@
 <?php
 
 use App\Observability\Status\BatchesSection;
+use App\Observability\Status\ExtractionSection;
 use App\Observability\Status\LlmSection;
 use App\Observability\Status\MasterCvSection;
 use App\Observability\Status\PostingsSection;
@@ -17,9 +18,9 @@ return [
     'trusted_proxies' => env('TRUSTED_PROXIES', ''),
 
     'api' => [
-        // A capture carries a page's whole HTML, so the API states a ceiling
-        // rather than letting the largest page anybody browses decide how much
-        // memory this application uses. A body past it is refused with 413.
+        // A capture carries a page's whole visible text, so the API states a
+        // ceiling rather than letting the largest page anybody browses decide
+        // how much memory this application uses. A body past it is 413.
         // Keep it below PHP's `post_max_size`, which is the only limit left
         // once a body arrives with no declared length.
         'max_body_bytes' => (int) env('CV_MAX_BODY_BYTES', 4 * 1024 * 1024),
@@ -38,6 +39,9 @@ return [
         'models' => [
             'generation' => env('LLM_GENERATION_MODEL', 'claude-opus-5'),
             'validation' => env('LLM_VALIDATION_MODEL', 'claude-haiku-4-5'),
+            // Reading a page and reporting the job on it is an easy task and
+            // does not want the generation model.
+            'extraction' => env('LLM_EXTRACTION_MODEL', 'claude-haiku-4-5'),
         ],
 
         // Micros (millionths of a currency unit) per million tokens, per
@@ -62,13 +66,16 @@ return [
             ],
         ],
 
-        // The ceiling on one response. A generation response is a whole
-        // selection — every requirement the job states, every item chosen from
-        // every role — so it needs room. A response that reaches the ceiling
-        // comes back cut off mid-document and is reported as unusable rather
-        // than stored, so raising this is the answer to seeing that.
+        // The ceiling on one response, per purpose. A generation response is a
+        // whole selection — every requirement the job states, every item chosen
+        // from every role — and an extraction response carries a whole job
+        // description back, so neither is a handful of tokens. A response that
+        // reaches its ceiling comes back cut off mid-document and is reported
+        // as unusable rather than stored, so raising this is the answer to
+        // seeing that.
         'max_output_tokens' => [
             'generation' => (int) env('LLM_GENERATION_MAX_OUTPUT_TOKENS', 16000),
+            'extraction' => (int) env('LLM_EXTRACTION_MAX_OUTPUT_TOKENS', 8000),
         ],
 
         // The batch API bills a percentage of the live rate. A percentage of
@@ -103,6 +110,7 @@ return [
         MasterCvSection::class,
         LlmSection::class,
         PostingsSection::class,
+        ExtractionSection::class,
         RevisionsSection::class,
         BatchesSection::class,
     ],

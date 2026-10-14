@@ -11,8 +11,8 @@ export interface FakeChrome {
   clearedAlarms: string[];
   badge: { text: string | null; background: string | null };
   injections: { files?: string[]; hasFunc: boolean }[];
-  /** What the injected extractor hands back. */
-  extraction: unknown;
+  /** What the injected page reader hands back. */
+  pageRead: unknown;
   /** Set to make injection fail, as a page the extension may not read does. */
   injectionRefused: boolean;
   permissionGranted: boolean;
@@ -28,7 +28,7 @@ export function installFakeChrome(): FakeChrome {
     clearedAlarms: [],
     badge: { text: null, background: null },
     injections: [],
-    extraction: undefined,
+    pageRead: undefined,
     injectionRefused: false,
     permissionGranted: true,
     requestedOrigins: [],
@@ -81,7 +81,7 @@ export function installFakeChrome(): FakeChrome {
         fake.injections.push({ files: injection.files, hasFunc: injection.func !== undefined });
 
         return Promise.resolve(
-          injection.func === undefined ? [{ result: null }] : [{ result: fake.extraction }],
+          injection.func === undefined ? [{ result: null }] : [{ result: fake.pageRead }],
         );
       },
     },

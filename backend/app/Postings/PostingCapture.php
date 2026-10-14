@@ -6,22 +6,23 @@ namespace App\Postings;
  * One capture, as the extension sent it.
  *
  * Capture carries the raw material and no interpretation of it: the page's
- * text, the container's HTML, and the metadata the page itself exposed.
- * Anything the backend can work out later, it works out later, so better
- * extraction can be re-run over a posting captured long ago.
+ * visible text and whatever structured data the page published about itself.
+ * Which part of that text is the job description is a judgement, and it is
+ * made here rather than in the browser — a judgement made at capture time
+ * cannot be revisited, because what was not stored cannot be re-read.
  */
 final readonly class PostingCapture
 {
+    /**
+     * @param  array<string, mixed>|null  $jsonLd  The page's `JobPosting`
+     *                                             object, uninterpreted.
+     */
     public function __construct(
         public string $url,
         public string $sourceSite,
-        public string $extractedText,
-        public string $rawHtml,
+        public string $pageText,
         public bool $hasHiddenText,
-        public ?string $title = null,
-        public ?string $company = null,
-        public ?string $location = null,
-        public ?string $salaryText = null,
+        public ?array $jsonLd = null,
     ) {}
 
     /**
@@ -32,12 +33,8 @@ final readonly class PostingCapture
         return [
             'url' => $this->url,
             'source_site' => $this->sourceSite,
-            'title' => $this->title,
-            'company' => $this->company,
-            'location' => $this->location,
-            'salary_text' => $this->salaryText,
-            'raw_html' => $this->rawHtml,
-            'extracted_text' => $this->extractedText,
+            'page_text' => $this->pageText,
+            'json_ld' => $this->jsonLd,
             'has_hidden_text' => $this->hasHiddenText,
         ];
     }
