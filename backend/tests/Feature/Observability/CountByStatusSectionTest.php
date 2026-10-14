@@ -41,6 +41,24 @@ class CountByStatusSectionTest extends TestCase
         $this->assertSame('0', $rows['applied']);
     }
 
+    /**
+     * One posting in each status at once, so a status the enum has but the
+     * report cannot count is a failure here rather than a zero nobody
+     * questions.
+     */
+    public function test_it_counts_a_posting_in_every_status_the_enum_has(): void
+    {
+        foreach (PostingStatus::cases() as $status) {
+            Posting::factory()->status($status)->create();
+        }
+
+        $rows = app(PostingsSection::class)->rows();
+
+        foreach (PostingStatus::values() as $status) {
+            $this->assertSame('1', $rows[$status], $status.' was not counted');
+        }
+    }
+
     public function test_it_reports_a_zero_for_every_revision_status_nothing_is_in(): void
     {
         $rows = app(RevisionsSection::class)->rows();

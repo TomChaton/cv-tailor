@@ -15,8 +15,13 @@ use App\Revisions\RevisionStatus;
 use Illuminate\Database\ConnectionInterface;
 
 /**
- * Turns captured postings into postings with a revision waiting to be
+ * Turns wanted postings into postings with a revision waiting to be
  * generated.
+ *
+ * **It sweeps `wanted` and never `captured`.** Capturing a posting is free and
+ * speculative, and generating a CV for one is neither, so the decision to
+ * spend is the owner's and is made explicitly. A captured posting nobody has
+ * asked for stays where it is for ever and costs nothing.
  *
  * This is a step of its own rather than part of capture because it needs a
  * master CV that parses and lints, and capture must succeed without one: a
@@ -69,11 +74,12 @@ class QueuePostings
     }
 
     /**
-     * Postings at `captured` that carry no revision, oldest first.
+     * Postings at `wanted` that carry no revision, oldest first.
      *
      * Identifiers rather than models: a posting holds a whole page's HTML and
-     * none of it is needed to queue one. A posting at `discarded` is not here,
-     * and neither is one some earlier run already gave a revision.
+     * none of it is needed to queue one. A posting still at `captured` is not
+     * here, nor is a discarded one, and neither is one some earlier run
+     * already gave a revision.
      *
      * @return list<int>
      */
@@ -81,7 +87,7 @@ class QueuePostings
     {
         /** @var list<int> */
         return Posting::query()
-            ->where('status', PostingStatus::Captured)
+            ->where('status', PostingStatus::Wanted)
             ->whereDoesntHave('revisions')
             ->oldest('id')
             ->pluck('id')
@@ -98,11 +104,12 @@ class QueuePostings
             // rather than `SELECT ... FOR UPDATE`: SQLite ignores row locks,
             // and nothing here may depend on one database's dialect. A
             // concurrent run that claimed this posting first has already moved
-            // it off `captured`, so this update matches no row and that run's
-            // revision stays the only one.
+            // it off `wanted`, so this update matches no row and that run's
+            // revision stays the only one. The same statement is what stops a
+            // posting discarded between the read and the claim being queued.
             $claimed = Posting::query()
                 ->whereKey($posting)
-                ->where('status', PostingStatus::Captured)
+                ->where('status', PostingStatus::Wanted)
                 ->update(['status' => PostingStatus::Queued]);
 
             if ($claimed === 0) {

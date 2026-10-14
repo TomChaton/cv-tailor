@@ -57,10 +57,10 @@ export interface components {
         };
         /**
          * PostingStatus
-         * @description Where a captured posting has got to. `captured → queued → ready → reviewed → applied`, plus `discarded` from anywhere. The list doubles as an application tracker, which is why the tail of it records what the owner did rather than what the pipeline did.
+         * @description Where a captured posting has got to. `captured → wanted → queued → ready → reviewed → applied`, plus `discarded` from anywhere. The list doubles as an application tracker, which is why the tail of it records what the owner did rather than what the pipeline did.  **`wanted` is where the owner decides to spend.** Capturing a posting is free and speculative and generating a CV for one is neither, so nothing but the owner moves a posting off `captured`.
          * @enum {string}
          */
-        PostingStatus: "captured" | "queued" | "ready" | "reviewed" | "applied" | "discarded";
+        PostingStatus: "captured" | "wanted" | "queued" | "ready" | "reviewed" | "applied" | "discarded";
     };
     responses: {
         /** @description Unauthenticated */

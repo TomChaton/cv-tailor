@@ -177,9 +177,10 @@
             },
             "PostingStatus": {
                 "type": "string",
-                "description": "Where a captured posting has got to. `captured \u2192 queued \u2192 ready \u2192 reviewed \u2192 applied`, plus `discarded` from anywhere. The list doubles as an application tracker, which is why the tail of it records what the owner did rather than what the pipeline did.\n",
+                "description": "Where a captured posting has got to. `captured \u2192 wanted \u2192 queued \u2192 ready \u2192 reviewed \u2192 applied`, plus `discarded` from anywhere. The list doubles as an application tracker, which is why the tail of it records what the owner did rather than what the pipeline did.  **`wanted` is where the owner decides to spend.** Capturing a posting is free and speculative and generating a CV for one is neither, so nothing but the owner moves a posting off `captured`.\n",
                 "enum": [
                     "captured",
+                    "wanted",
                     "queued",
                     "ready",
                     "reviewed",

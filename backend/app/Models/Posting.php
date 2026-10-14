@@ -25,7 +25,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property-read string|null $salary_text
  * @property-read string $extracted_text
  * @property-read string $dedupe_hash
+ * @property-read bool $has_hidden_text
  * @property-read PostingStatus $status
+ * @property-read ?int $current_revision_id
  */
 #[Fillable([
     'url',

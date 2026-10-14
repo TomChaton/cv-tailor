@@ -49,6 +49,36 @@ final readonly class PostingEvents
     }
 
     /**
+     * The owner has decided this posting is worth a CV.
+     *
+     * The line that says money is about to be spent: nothing on a schedule
+     * writes it, so every generation the system pays for can be traced back
+     * to one of these.
+     */
+    public function wanted(Posting $posting): void
+    {
+        $this->log->log('posting.wanted', [
+            'posting_id' => $posting->id,
+        ]);
+    }
+
+    /**
+     * A posting the owner is done with.
+     *
+     * `from` is the status it left. A posting discarded on sight and one
+     * discarded after its CV was read are the same decision taken about very
+     * different things, and the status it was in is the only thing that tells
+     * a reader which happened.
+     */
+    public function discarded(Posting $posting, PostingStatus $from): void
+    {
+        $this->log->log('posting.discarded', [
+            'posting_id' => $posting->id,
+            'from' => $from->value,
+        ]);
+    }
+
+    /**
      * A posting whose current revision is a CV the owner can send.
      */
     public function ready(Revision $revision): void

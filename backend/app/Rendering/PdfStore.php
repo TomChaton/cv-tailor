@@ -28,6 +28,26 @@ final readonly class PdfStore
     }
 
     /**
+     * A revision's PDF, or null where there is no file to read.
+     *
+     * `pdf_path` is the system's own statement that a PDF exists, so a reader
+     * decides whether to offer one from the column rather than by asking the
+     * disk about every revision it lists. This answers with null all the same:
+     * the disk's root is a named volume, and a volume that has been replaced
+     * is a missing file rather than a broken caller.
+     */
+    public function read(Revision $revision): ?string
+    {
+        $path = $revision->pdf_path;
+
+        if ($path === null || ! $this->disk->exists($path)) {
+            return null;
+        }
+
+        return $this->disk->get($path);
+    }
+
+    /**
      * @return string The path to record on the revision.
      */
     public function put(Revision $revision, string $pdf): string

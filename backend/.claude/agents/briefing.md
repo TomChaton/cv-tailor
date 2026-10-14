@@ -461,9 +461,24 @@ a walk over JSON, and a column that is summed is a column worth naming.
 
 ### Posting status
 
-`captured → queued → ready → reviewed → applied`, plus `discarded`. A posting
-is `ready` when its current revision is `ready`. The list doubles as an
+`captured → wanted → queued → ready → reviewed → applied`, plus `discarded`. A
+posting is `ready` when its current revision is `ready`. The list doubles as an
 application tracker.
+
+**`wanted` is the gate, and it is there because capturing and generating are
+two different decisions.** A posting is captured because it looked interesting
+for a moment, which is free and speculative; generating a CV for one costs
+money and attention. Collapsing the two spends on every posting the owner ever
+glanced at. So nothing on a schedule moves a posting off `captured` — the owner
+marks it, and `cv:queue` sweeps what they marked. A posting nobody asks for
+stays where it is and costs nothing, however long it sits there.
+
+**`discarded` is reachable from every other state**, because a posting is
+abandoned on sight, or after its CV has been read, or after the application
+came to nothing, and those are one decision. The guarantee that a discarded
+posting is never generated from is the status itself rather than a condition
+anything has to remember: the sweep reads `wanted`, and discarding moves a
+posting off it.
 
 **The status is stored even though `ready` could be derived** from the current
 revision. `reviewed` and `applied` are things the owner did, which no revision
@@ -555,14 +570,19 @@ application running.
 
 ### Queueing
 
-`captured → queued` is a scheduled step of its own and not part of capture. It
+**`cv:queue` sweeps `wanted`.** A captured posting is never queued by anything
+on a schedule: the decision that a posting is worth generating a CV for is the
+owner's, and the reasoning is under Posting status. So the sweep's own job is
+narrow — it takes what the owner has already marked and gives each one a
+`pending` revision pointing at the version of the CV it will be generated from.
+
+`wanted → queued` is a scheduled step of its own and not part of capture. It
 needs a master CV that parses and lints, and capture must succeed without one:
 a posting found while the CV is mid-edit is still a posting worth having. So
 capture records a posting and nothing else, and a later run decides it is ready
-to be generated from by giving it one `pending` revision pointing at the
-version of the CV it will be generated from.
+to be generated from.
 
-- **A master CV that cannot be used leaves the postings at `captured`**, rather
+- **A master CV that cannot be used leaves the postings at `wanted`**, rather
   than failing them. Nothing is lost and nothing has to be retried by hand:
   the first run after the CV is fixed picks up everything that was waiting. It
   is an alarm all the same — the system is waiting on the owner, and a silent
@@ -574,10 +594,12 @@ version of the CV it will be generated from.
   worth an alarm until something is waiting on it.
 - **The CV is parsed once per run, not once per posting.** A run that queues
   five postings reads and lints one file.
-- **A posting is claimed with a conditional update** — status `captured` to
+- **A posting is claimed with a conditional update** — status `wanted` to
   `queued` — and the revision is created inside the same transaction. Two runs
   at once therefore cannot both give one posting a revision, and the claim is
-  ordinary SQL rather than a row lock, which SQLite does not have.
+  ordinary SQL rather than a row lock, which SQLite does not have. The same
+  statement is what stops a posting discarded between being read and being
+  claimed from being queued anyway.
 - **A pending revision already names a model and a prompt version**, because
   neither column may be null. Neither is a fact yet: the prompt version is
   written again when the request is built and the model when the response is
@@ -1193,8 +1215,9 @@ the review UI is the only thing this application serves to a browser.
 
 It shows:
 
-- Postings, filterable by status and source, with the hidden-text warning.
-  The screen calls them Jobs.
+- Postings, filterable by status and source, with the hidden-text warning, and
+  the actions that mark one as wanted, discard it, or hand back its CV. The
+  screen calls them Jobs.
 - Per posting: the job description beside the current revision's PDF; the
   requirements checklist (met / partial / gap, linked to evidence); validation
   findings; the model's review notes.
@@ -1210,6 +1233,42 @@ Filament ships its panel CSS prebuilt from its own class names, and this
 application has no front-end build to add to it. A hand-written Blade template
 therefore has no utility classes to reach for: everything a page renders is
 assembled from schema components, which carry the styles that exist.
+
+### The postings list
+
+Everything captured, newest first, and the decision the owner takes about each
+one. It is the surface the gate exists for: a posting is marked as wanted here
+or it is never generated from.
+
+- **A field the capture did not find shows as absent**, not as an empty cell.
+  Capture omits rather than guesses, and a blank cell cannot be told from a
+  value that is blank — so a list that printed one would hand the owner a fact
+  the system never had.
+- **The warning about hidden text is a warning and nothing else.** Hidden text
+  in a listing is sometimes aimed at AI tools, so the owner needs to know
+  before trusting what was extracted. A listing with none is the ordinary case
+  and has nothing to say, and a tick-against-cross pair would mark every
+  ordinary posting with a symbol that warns about nothing.
+- **A status is shown and never explained.** A legend on a list is read once
+  and skipped for ever; the status machine is written down here instead.
+- **The screen says "Jobs" and the schema says `postings`**, deliberately. The
+  reasoning is under Postings, not jobs.
+- **Discarding asks for confirmation and marking as wanted does not.** Nothing
+  moves a posting off `discarded`, so a misclick there loses a job from the
+  list for good; marking as wanted is undone by discarding and costs nothing
+  until the sweep runs. The modal is a heading and a button — the row the
+  owner clicked is behind it and already says which job it is — so Filament's
+  own confirmation, whose "are you sure" paragraph cannot be turned off, is
+  not what raises it.
+- **The downloaded file is named for the job, not for the row.** The filename
+  reaches an employer, and a posting's id means nothing to anybody outside
+  this database, so the company's name is slugged into it. Capture omits a
+  company rather than guessing one, so a posting without one is ordinary and
+  still downloads, under the id.
+- **The list is what the panel lands on.** It is the screen the owner signs in
+  to look at, so the panel registers no dashboard and Filament sends its root
+  at the first item in the navigation. The order of that navigation is stated
+  on the resources and pages rather than left to discovery order.
 
 ### The master CV page
 
@@ -1404,7 +1463,7 @@ toolchain:
 | Issue an extension token | `docker compose exec app php artisan cv:token` |
 | Check the master CV | `docker compose exec app php artisan cv:lint` |
 | Import a master CV from a file | `docker compose exec app php artisan cv:import /tmp/master-cv.md` |
-| Queue captured postings for generation | `docker compose exec app php artisan cv:queue` |
+| Queue the postings marked as wanted | `docker compose exec app php artisan cv:queue` |
 | Submit every pending revision as one batch | `docker compose exec app php artisan cv:batch-submit` |
 | Collect the results of every finished batch | `docker compose exec app php artisan cv:batch-poll` |
 | Arm the submitter again after it halted itself | `docker compose exec app php artisan cv:batch-resume` |
