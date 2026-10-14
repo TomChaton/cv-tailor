@@ -44,6 +44,12 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class MasterCv extends Page
 {
+    /**
+     * The editor's element id. A finding reaches the editor by it, and that
+     * is the only thing the two halves of the page share.
+     */
+    private const EDITOR_ID = 'master-cv-markdown';
+
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedDocumentText;
 
     /**
@@ -117,9 +123,12 @@ class MasterCv extends Page
                     ->schema([
                         Textarea::make('markdown')
                             ->label(__('master-cv.markdown'))
+                            ->id(self::EDITOR_ID)
                             ->rows(30),
                     ]),
-                Group::make()->schema(fn (): array => $this->verdict($this->getReport())),
+                Group::make()
+                    ->extraAttributes(['x-data' => $this->lineSelector()])
+                    ->schema(fn (): array => $this->verdict($this->getReport())),
             ]),
         ]);
     }
@@ -282,13 +291,10 @@ class MasterCv extends Page
             $fieldsets[] = Fieldset::make(__('master-cv.checks.'.$check))
                 ->columns(1)
                 ->schema([
-                    // The messages are the linter's own words, written for the
-                    // CV's author rather than for a developer, so they are the
-                    // one thing on this page that does not come from the
-                    // catalogue.
                     UnorderedList::make(array_map(
-                        fn (Finding $finding): string => $this->findingText($finding),
+                        fn (Finding $finding, int $position): Action|string => $this->finding($finding, $position),
                         $findings,
+                        array_keys($findings),
                     ))
                         // The component lays short items out in two columns.
                         // A finding is a sentence, so it gets the width.
@@ -299,6 +305,40 @@ class MasterCv extends Page
         return $fieldsets;
     }
 
+    /**
+     * One finding, beside the editor it is about.
+     *
+     * A finding that names a line is a button that selects it. The number was
+     * only ever being read to find the line, and finding it by eye in a
+     * document of several hundred lines is the work this takes off the page.
+     *
+     * A finding with no line to name has nothing to select, so it stays the
+     * sentence it was: a control that did nothing when it was pressed would
+     * be worse than no control at all.
+     *
+     * Notes behave exactly as problems do. One fails the CV and the other
+     * does not, and neither fact has anything to do with finding the line.
+     */
+    private function finding(Finding $finding, int $position): Action|string
+    {
+        if ($finding->line === null) {
+            return $this->findingText($finding);
+        }
+
+        return Action::make(implode('_', [$finding->level->value, $finding->check, $position]))
+            ->label($this->findingText($finding))
+            ->link()
+            // Client-side only. The selection is the browser's own, so the
+            // server has nothing to say about it, and a round trip would be
+            // a round trip per problem read.
+            ->alpineClickHandler('selectLine('.$finding->line.')');
+    }
+
+    /**
+     * The messages are the linter's own words, written for the CV's author
+     * rather than for a developer, so they are the one thing on this page
+     * that does not come from the catalogue.
+     */
     private function findingText(Finding $finding): string
     {
         return $finding->line === null
@@ -307,5 +347,76 @@ class MasterCv extends Page
                 'line' => $finding->line,
                 'message' => $finding->message,
             ]);
+    }
+
+    /**
+     * Selecting the line a finding names, in the editor beside it.
+     *
+     * The browser's own selection is the highlight and nothing is drawn: a
+     * gutter of line numbers would have to agree with the editor's own
+     * wrapping, and a master CV holds lines long enough to wrap.
+     *
+     * A text area does not scroll to a selection a script made: it scrolls
+     * for a caret the person moved, and for nothing else. So where the line
+     * begins is measured in a copy of the editor holding the text above it —
+     * a copy wraps where the editor wraps, which a line height multiplied by
+     * a line number does not.
+     *
+     * The findings are the last lint's and the editor holds whatever has been
+     * typed since, so a line a finding names may no longer be there. Past the
+     * end of the text, this does nothing: saving re-lints, and that is what
+     * makes the list true again. Nothing here asks whether the line still
+     * says what it said.
+     *
+     * Alpine, inline, because the panel already ships it and a code editor
+     * would cost this application the front-end build it does not have.
+     *
+     * Single quotes throughout: an attribute value is rendered with only `"`
+     * escaped, and the escape it is given is not one HTML honours.
+     */
+    private function lineSelector(): string
+    {
+        return sprintf(<<<'JS'
+            {
+                selectLine(line) {
+                    const editor = document.getElementById('%s');
+
+                    if (editor === null) { return; }
+
+                    const lines = editor.value.split('\n');
+
+                    if (line < 1 || lines.length < line) { return; }
+
+                    const above = lines.slice(0, line - 1).join('\n');
+                    const start = line === 1 ? 0 : above.length + 1;
+
+                    editor.focus();
+                    editor.setSelectionRange(start, start + lines[line - 1].length);
+                    editor.scrollTop = this.whereLineBegins(editor, above) - (editor.clientHeight / 2);
+                },
+
+                whereLineBegins(editor, above) {
+                    const mirror = document.createElement('textarea');
+                    const style = getComputedStyle(editor);
+
+                    for (const property of ['fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'whiteSpace', 'overflowWrap', 'wordBreak', 'tabSize', 'textIndent']) {
+                        mirror.style[property] = style[property];
+                    }
+
+                    mirror.style.boxSizing = 'content-box';
+                    mirror.style.width = style.width;
+                    mirror.style.height = '0';
+                    mirror.style.position = 'absolute';
+                    mirror.style.visibility = 'hidden';
+                    mirror.value = above;
+
+                    editor.parentNode.appendChild(mirror);
+                    const begins = mirror.scrollHeight;
+                    mirror.remove();
+
+                    return begins;
+                },
+            }
+            JS, self::EDITOR_ID);
     }
 }
