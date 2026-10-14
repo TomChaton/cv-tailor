@@ -38,6 +38,11 @@ class BatchesSection extends CountByStatusSection
         return LlmBatch::query();
     }
 
+    protected function column(): string
+    {
+        return 'state';
+    }
+
     protected function statuses(): array
     {
         return LlmBatchState::values();

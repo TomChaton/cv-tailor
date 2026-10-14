@@ -179,6 +179,25 @@ class CvStatusCommandTest extends TestCase
         $this->assertStringContainsString('batches 3, 4', $output);
     }
 
+    /**
+     * The section's counts and its "oldest open" line read the same table, so
+     * a report that finds a batch on one line and none on the others is
+     * contradicting itself.
+     */
+    public function test_it_counts_the_batches_the_table_holds(): void
+    {
+        LlmBatch::factory()->count(2)->create();
+        LlmBatch::factory()->inState(LlmBatchState::Collected)->create();
+
+        $this->assertSame(Command::SUCCESS, Artisan::call('cv:status'));
+
+        $output = Artisan::output();
+
+        $this->assertMatchesRegularExpression('/submitted[\s.]+2/', $output);
+        $this->assertMatchesRegularExpression('/collected[\s.]+1/', $output);
+        $this->assertMatchesRegularExpression('/expired[\s.]+0/', $output);
+    }
+
     public function test_it_calls_out_the_batch_that_has_been_open_longest(): void
     {
         $oldest = LlmBatch::factory()->create(['submitted_at' => CarbonImmutable::now()->subHours(3)]);

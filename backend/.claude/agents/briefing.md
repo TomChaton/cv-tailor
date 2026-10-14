@@ -1461,3 +1461,15 @@ goes where it is told, which has to be somewhere writable, and
   longer of the two, or a job that is merely slow is handed to a second worker
   while the first is still working on it, and the pipeline's jobs are the slow
   ones. Change either number and change both.
+- **A mistyped column name is a silent zero on SQLite**, which is why a count
+  is guarded rather than trusted. SQLite reads a double-quoted identifier that
+  matches no column as a string literal, so counting `status` on a table whose
+  column is `state` compares the word "status" to each state, matches nothing
+  and reports zero; PostgreSQL raises an undefined-column error for the same
+  query. A report that answers a wrong column with a zero is worse than one
+  that fails, because zero is a plausible answer: so a `cv:status` section
+  names the column it counts — never inheriting a default, which the table that
+  calls it something else inherits silently — and the schema is asked whether
+  the column exists before the rows are asked anything. The guard is not
+  redundant; it only looks it to someone who has run the suite on nothing but
+  SQLite.
