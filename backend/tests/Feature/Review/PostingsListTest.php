@@ -9,6 +9,7 @@ use App\Models\Revision;
 use App\Models\User;
 use App\Postings\PostingStatus;
 use App\Revisions\RevisionStatus;
+use Filament\Actions\Testing\TestAction;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
@@ -196,6 +197,23 @@ class PostingsListTest extends TestCase
         $this->assertSame(PostingStatus::Wanted, $posting->refresh()->status);
     }
 
+    /**
+     * Marking a posting as wanted is reversible by discarding and costs
+     * nothing until the sweep runs, so it acts on the click.
+     */
+    public function test_marking_a_posting_wanted_does_not_ask_first(): void
+    {
+        $this->signIn();
+
+        $posting = Posting::factory()->create();
+
+        Livewire::test(ListPostings::class)
+            ->callTableAction('want', $posting)
+            ->assertActionNotMounted();
+
+        $this->assertSame(PostingStatus::Wanted, $posting->refresh()->status);
+    }
+
     #[DataProvider('statusesThatCannotBeMarked')]
     public function test_marking_a_posting_wanted_is_offered_on_nothing_else(PostingStatus $status): void
     {
@@ -244,6 +262,45 @@ class PostingsListTest extends TestCase
         }
     }
 
+    /**
+     * Nothing moves a posting off `discarded`, so the one action that cannot
+     * be undone from here asks before it acts.
+     */
+    public function test_discarding_asks_first_and_leaves_the_posting_alone_until_it_is_confirmed(): void
+    {
+        $this->signIn();
+
+        $posting = Posting::factory()->create();
+
+        $list = Livewire::test(ListPostings::class)
+            ->mountTableAction('discard', $posting)
+            ->assertActionMounted(TestAction::make('discard')->table($posting));
+
+        $this->assertSame(PostingStatus::Captured, $posting->refresh()->status);
+
+        $list->callMountedAction();
+
+        $this->assertSame(PostingStatus::Discarded, $posting->refresh()->status);
+    }
+
+    public function test_the_confirmation_is_a_heading_and_a_button(): void
+    {
+        $this->signIn();
+
+        $list = Livewire::test(ListPostings::class)
+            ->mountTableAction('discard', Posting::factory()->create());
+
+        $list->assertMountedActionModalSee([
+            __('postings.discard_confirmation.heading'),
+            __('postings.discard_confirmation.confirm'),
+        ]);
+
+        // The row behind the modal already says which job it is, so there is
+        // nothing for a paragraph to add. Filament's own confirmation sentence
+        // is what would arrive if nobody said otherwise.
+        $list->assertMountedActionModalDontSee(__('filament-actions::modal.confirmation'));
+    }
+
     public function test_discarding_is_not_offered_on_a_discarded_posting(): void
     {
         $this->signIn();
@@ -257,18 +314,58 @@ class PostingsListTest extends TestCase
     {
         $this->signIn();
 
-        $posting = Posting::factory()->status(PostingStatus::Ready)->create();
-        $revision = $this->rendered($posting, '%PDF-1.7 the current one');
-
-        $posting->update(['current_revision_id' => $revision->id]);
+        $posting = $this->readyToDownload(['company' => 'Northwind Logistics']);
 
         Livewire::test(ListPostings::class)
             ->assertTableActionVisible('download', $posting)
             ->callTableAction('download', $posting)
             ->assertFileDownloaded(
-                __('postings.pdf_filename', ['posting' => $posting->id]),
+                __('postings.pdf_filename_for_company', ['company' => 'northwind-logistics']),
                 '%PDF-1.7 the current one',
                 'application/pdf',
+            );
+    }
+
+    /**
+     * The filename reaches an employer, and a posting's id means nothing to
+     * anybody outside this database.
+     */
+    public function test_the_download_is_named_for_the_company(): void
+    {
+        $this->signIn();
+
+        $posting = $this->readyToDownload(['company' => 'Ørsted  Rail & Freight, Ltd.']);
+
+        Livewire::test(ListPostings::class)
+            ->callTableAction('download', $posting)
+            ->assertFileDownloaded(
+                __('postings.pdf_filename_for_company', ['company' => 'orsted-rail-freight-ltd']),
+            );
+    }
+
+    public function test_the_download_falls_back_to_the_posting_where_the_capture_found_no_company(): void
+    {
+        $this->signIn();
+
+        $posting = $this->readyToDownload(['company' => null]);
+
+        Livewire::test(ListPostings::class)
+            ->callTableAction('download', $posting)
+            ->assertFileDownloaded(
+                __('postings.pdf_filename', ['posting' => $posting->id]),
+            );
+    }
+
+    public function test_the_download_falls_back_where_the_company_slugs_to_nothing(): void
+    {
+        $this->signIn();
+
+        $posting = $this->readyToDownload(['company' => '!!! ---']);
+
+        Livewire::test(ListPostings::class)
+            ->callTableAction('download', $posting)
+            ->assertFileDownloaded(
+                __('postings.pdf_filename', ['posting' => $posting->id]),
             );
     }
 
@@ -290,6 +387,21 @@ class PostingsListTest extends TestCase
 
         Livewire::test(ListPostings::class)
             ->assertTableActionHidden('download', Posting::factory()->create());
+    }
+
+    /**
+     * A posting whose current revision has a PDF on the disk.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    private function readyToDownload(array $attributes = []): Posting
+    {
+        $posting = Posting::factory()->status(PostingStatus::Ready)->create($attributes);
+        $revision = $this->rendered($posting, '%PDF-1.7 the current one');
+
+        $posting->update(['current_revision_id' => $revision->id]);
+
+        return $posting;
     }
 
     /**

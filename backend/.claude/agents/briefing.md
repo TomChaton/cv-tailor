@@ -1253,6 +1253,22 @@ or it is never generated from.
   and skipped for ever; the status machine is written down here instead.
 - **The screen says "Jobs" and the schema says `postings`**, deliberately. The
   reasoning is under Postings, not jobs.
+- **Discarding asks for confirmation and marking as wanted does not.** Nothing
+  moves a posting off `discarded`, so a misclick there loses a job from the
+  list for good; marking as wanted is undone by discarding and costs nothing
+  until the sweep runs. The modal is a heading and a button — the row the
+  owner clicked is behind it and already says which job it is — so Filament's
+  own confirmation, whose "are you sure" paragraph cannot be turned off, is
+  not what raises it.
+- **The downloaded file is named for the job, not for the row.** The filename
+  reaches an employer, and a posting's id means nothing to anybody outside
+  this database, so the company's name is slugged into it. Capture omits a
+  company rather than guessing one, so a posting without one is ordinary and
+  still downloads, under the id.
+- **The list is what the panel lands on.** It is the screen the owner signs in
+  to look at, so the panel registers no dashboard and Filament sends its root
+  at the first item in the navigation. The order of that navigation is stated
+  on the resources and pages rather than left to discovery order.
 
 ### The master CV page
 

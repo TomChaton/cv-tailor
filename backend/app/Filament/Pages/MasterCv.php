@@ -60,6 +60,11 @@ class MasterCv extends Page
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedDocumentText;
 
     /**
+     * After the postings list, which is what the panel lands on.
+     */
+    protected static ?int $navigationSort = 2;
+
+    /**
      * The editor's state. Filament fields bind to a public Livewire property,
      * and `data` is the name its own pages use.
      *

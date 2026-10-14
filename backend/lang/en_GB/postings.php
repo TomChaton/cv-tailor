@@ -47,6 +47,18 @@ return [
         'download' => 'Download',
     ],
 
+    // Nothing moves a posting off `discarded`, so discarding asks first. The
+    // heading names the act and stops: the row the owner clicked is on screen
+    // behind the modal and already says which job it is.
+    'discard_confirmation' => [
+        'heading' => 'Discard this job?',
+        'confirm' => 'Discard',
+    ],
+
+    // The name the downloaded CV reaches an employer under. The company's,
+    // where capture found one; the posting's id where it did not, because an
+    // id is the only other thing that tells two files apart.
+    'pdf_filename_for_company' => 'cv-:company.pdf',
     'pdf_filename' => 'cv-:posting.pdf',
 
 ];

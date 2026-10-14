@@ -12,12 +12,15 @@ use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Resources\Pages\PageRegistration;
 use Filament\Resources\Resource;
+use Filament\Support\Enums\Alignment;
+use Filament\Support\Enums\Width;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -40,6 +43,14 @@ class PostingResource extends Resource
     protected static ?string $model = Posting::class;
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+
+    /**
+     * First in the navigation, which is also where the panel lands: Filament
+     * sends its root at the first item the navigation offers. The list is the
+     * screen the owner signs in to look at, so the order is stated here
+     * rather than left to the order the panel happened to discover things in.
+     */
+    protected static ?int $navigationSort = 1;
 
     /**
      * The screen says "Jobs" where the schema says `postings`. The owner
@@ -154,6 +165,15 @@ class PostingResource extends Resource
     /**
      * Discarding, from anywhere but `discarded`. A discarded posting is never
      * queued, whatever else was true of it.
+     *
+     * It asks first, and marking as wanted does not: nothing moves a posting
+     * off `discarded`, so one misclick loses a job from the list for good,
+     * where a posting marked as wanted is still free to discard.
+     *
+     * The modal is a heading and a button. Filament's `requiresConfirmation()`
+     * adds an "are you sure" paragraph that cannot be turned off and that the
+     * heading has already said, so the modal is raised by its heading — which
+     * is what opens one — and dressed as the confirmation it is.
      */
     private static function discardAction(): Action
     {
@@ -161,6 +181,12 @@ class PostingResource extends Resource
             ->label(__('postings.actions.discard'))
             ->icon(Heroicon::XMark)
             ->visible(fn (Posting $record): bool => $record->status !== PostingStatus::Discarded)
+            ->modalHeading(__('postings.discard_confirmation.heading'))
+            ->modalSubmitActionLabel(__('postings.discard_confirmation.confirm'))
+            ->modalIcon(Heroicon::OutlinedExclamationTriangle)
+            ->modalWidth(Width::Medium)
+            ->modalAlignment(Alignment::Center)
+            ->modalFooterActionsAlignment(Alignment::Center)
             ->action(fn (Posting $record, DiscardPosting $discard) => $discard->handle($record));
     }
 
@@ -188,10 +214,31 @@ class PostingResource extends Resource
 
                 return response()->streamDownload(
                     fn () => print $pdf,
-                    (string) __('postings.pdf_filename', ['posting' => $record->id]),
+                    self::downloadFilename($record),
                     ['Content-Type' => 'application/pdf'],
                 );
             });
+    }
+
+    /**
+     * The name the file reaches an employer under, so it is named for the job
+     * and not for the row: a posting's id means nothing to anybody outside
+     * this database.
+     *
+     * Capture omits a company rather than guessing one, so a posting without
+     * one is ordinary and must still download — under the posting's id, which
+     * is the only other thing that tells two files apart. A company whose
+     * name is all punctuation slugs to nothing and takes the same route.
+     */
+    private static function downloadFilename(Posting $posting): string
+    {
+        $company = Str::slug((string) $posting->company);
+
+        if ($company === '') {
+            return (string) __('postings.pdf_filename', ['posting' => $posting->id]);
+        }
+
+        return (string) __('postings.pdf_filename_for_company', ['company' => $company]);
     }
 
     private static function statusLabel(PostingStatus $status): string
