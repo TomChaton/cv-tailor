@@ -256,6 +256,14 @@ other side pins none: "PHP 7.x (7.0, 7.4)" and "PHP 8.x (8.3)" are two
 deliberate statements, and reporting them would make the check noise on any CV
 spanning a decade.
 
+**An unrecognised block label stays allowed, and the note that reports it
+names the labels that are recognised.** A reader told only that their label is
+unknown cannot choose one that is not, so the note carries the alternatives.
+It offers no fix and no button: the behaviour it reports is already the right
+one, and there is nothing here to put right. The note names the canonical
+labels and not the further spellings the parser accepts — somebody asking what
+the alternatives are wants the alternatives, not synonyms for one of them.
+
 Lint output names the line and the problem. It is written for the CV's author,
 not for a developer. The exit code is non-zero on failure, so generation and
 the scheduler can both rely on it.
@@ -1261,6 +1269,46 @@ lint finding against it.
   it is given them, and supplies only the heading of the check that raised each
   one. It prints no remedy: a finding names what fixes it and this page's
   answer to that is a button, not a sentence.
+
+### A guided fix
+
+Some problems have a closed set of right answers, and where they do the page
+can offer them rather than describe the problem and leave. A skills-index
+row's "Where used" is the first: the cell may only name roles and projects, and
+the document says which exist.
+
+- **A guided fix offers only what the document already contains.** The choices
+  are built from the parse, and nothing a person can do in the modal produces
+  an answer that is not already in the file. That is the whole of what makes
+  writing to the master CV safe here — no model, no review step, no trust
+  placed in what the browser sends back — and it is the rule any later guided
+  fix has to meet before it may write anything. A fix that would need the
+  author to type a value is not a guided fix.
+- **The text a choice writes is the text it is labelled with**, so what was
+  picked and what was written cannot drift apart. A chosen independent project
+  therefore says it is one, exactly as a derived row does, because the CV's own
+  rules turn on commercial experience against personal work.
+- **A guided fix writes one row and proves it.** Before the result is saved it
+  is compared to the source line by line, and anything but a single changed
+  line is refused. The proof is taken rather than argued from the construction:
+  the construction is what a later change alters.
+- **It writes the row the fix was offered for, confirmed by name**, and refuses
+  a line that no longer carries that row. Guessing would put one skill's
+  evidence on another, which is a false claim in the one document every other
+  guarantee is measured against.
+- **A fix reads and writes the editor's text, not the stored copy.** The editor
+  may hold changes nobody has saved, and a fix that wrote around them would
+  throw them away. Confirming is a save like any other, so it re-lints, and
+  whether the problem went is the problems list's answer rather than a sentence
+  of its own.
+- **Choosing nothing is an answer.** A row that claims no roles is right for a
+  skill its author has not placed yet, and it is better than a row claiming
+  something the file does not contain. Lint then says nothing about that row,
+  because a row claiming no evidence has none to check — see Linting. An
+  emptied cell is therefore quieter than a wrong one, which is the trade the
+  format already makes for every list-form row that names nowhere.
+- **Only a problem that names this remedy carries the control.** A problem with
+  no fix this page can make shows nothing suggesting otherwise.
 
 ## Observability
 

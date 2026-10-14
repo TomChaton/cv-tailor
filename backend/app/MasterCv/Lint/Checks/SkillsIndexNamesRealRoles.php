@@ -4,6 +4,7 @@ namespace App\MasterCv\Lint\Checks;
 
 use App\MasterCv\Lint\Check;
 use App\MasterCv\Lint\Finding;
+use App\MasterCv\Lint\Remedy;
 use App\MasterCv\Lint\RoleNames;
 use App\MasterCv\ParsedMasterCv;
 
@@ -39,7 +40,7 @@ class SkillsIndexNamesRealRoles implements Check
                 $findings[] = Finding::problem($this->name(), $skill->line, sprintf(
                     '"Where used" for "%s" names no role or project in this file.',
                     $skill->name,
-                ));
+                ), Remedy::ChooseWhereUsed);
 
                 continue;
             }

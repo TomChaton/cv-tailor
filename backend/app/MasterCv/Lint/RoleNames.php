@@ -13,11 +13,15 @@ use App\MasterCv\Role;
  * `Presented at Harlequin Transit`. So a cell is split on its commas and
  * semicolons, each part is stripped of what qualifies it rather than names it,
  * and a part matches when it and a role's name contain one another.
+ *
+ * It answers which role a part names, not merely whether one does, because a
+ * surface that offers to rewrite the cell has to pre-select exactly what lint
+ * already counts as resolved. Two answers to one question would drift.
  */
 final class RoleNames
 {
-    /** @var list<string> */
-    private array $names = [];
+    /** @var list<array{role: Role, names: list<string>}> */
+    private array $roles = [];
 
     /**
      * @param  list<Role>  $roles
@@ -25,13 +29,17 @@ final class RoleNames
     public function __construct(array $roles)
     {
         foreach ($roles as $role) {
+            $names = [];
+
             foreach ([$role->employer, $role->heading, $role->id] as $name) {
                 $normalised = $name === null ? '' : self::normalise($name);
 
                 if (strlen($normalised) >= 3) {
-                    $this->names[] = $normalised;
+                    $names[] = $normalised;
                 }
             }
+
+            $this->roles[] = ['role' => $role, 'names' => $names];
         }
     }
 
@@ -62,21 +70,32 @@ final class RoleNames
         return false;
     }
 
-    private function matches(string $part): bool
+    /**
+     * The role a part of a cell names, in document order where it could be
+     * more than one.
+     */
+    public function role(string $part): ?Role
     {
         $part = self::normalise($part);
 
         if (strlen($part) < 3) {
-            return false;
+            return null;
         }
 
-        foreach ($this->names as $name) {
-            if (str_contains($part, $name) || str_contains($name, $part)) {
-                return true;
+        foreach ($this->roles as $candidate) {
+            foreach ($candidate['names'] as $name) {
+                if (str_contains($part, $name) || str_contains($name, $part)) {
+                    return $candidate['role'];
+                }
             }
         }
 
-        return false;
+        return null;
+    }
+
+    private function matches(string $part): bool
+    {
+        return $this->role($part) !== null;
     }
 
     private static function normalise(string $name): string

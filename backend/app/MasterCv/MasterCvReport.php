@@ -16,6 +16,10 @@ use Carbon\CarbonImmutable;
  * A CV that has never been saved has nothing to report but that. Reporting it
  * as a parse with no facts in it would be indistinguishable from a CV its
  * author had emptied, and the two want different things doing about them.
+ *
+ * It carries the parse itself as well as the counts taken from it, because a
+ * finding is addressed to a unit of the document and a surface that offers to
+ * act on one has to reach that unit.
  */
 final readonly class MasterCvReport
 {
@@ -30,6 +34,7 @@ final readonly class MasterCvReport
         public ?array $counts = null,
         public ?LintReport $lint = null,
         public ?IdAssignment $ids = null,
+        public ?ParsedMasterCv $parsed = null,
     ) {}
 
     /**
@@ -55,6 +60,7 @@ final readonly class MasterCvReport
             $parsed->counts(),
             $lint,
             $ids,
+            $parsed,
         );
     }
 
