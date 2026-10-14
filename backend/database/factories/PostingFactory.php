@@ -40,6 +40,16 @@ class PostingFactory extends Factory
     }
 
     /**
+     * A posting the owner has asked for a CV for, which is the one state
+     * `cv:queue` sweeps. The default is `captured`, because that is what a
+     * capture produces and nothing but the owner moves it off.
+     */
+    public function wanted(): static
+    {
+        return $this->status(PostingStatus::Wanted);
+    }
+
+    /**
      * A listing carrying text aimed at AI tools rather than at a reader. The
      * review UI warns about these, so something has to be able to make one.
      */

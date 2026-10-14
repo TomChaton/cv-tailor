@@ -24,9 +24,9 @@ class QueuePostingsTest extends TestCase
     use MasterCvFixtures;
     use RefreshDatabase;
 
-    public function test_a_captured_posting_gains_one_pending_revision_at_the_current_cv_version(): void
+    public function test_a_wanted_posting_gains_one_pending_revision_at_the_current_cv_version(): void
     {
-        $posting = Posting::factory()->create();
+        $posting = Posting::factory()->wanted()->create();
 
         $outcome = $this->queue()->handle();
 
@@ -62,7 +62,7 @@ class QueuePostingsTest extends TestCase
     {
         config(['cv.llm.models.generation' => 'claude-opus-5']);
 
-        Posting::factory()->create();
+        Posting::factory()->wanted()->create();
 
         $this->queue()->handle();
 
@@ -73,7 +73,7 @@ class QueuePostingsTest extends TestCase
     {
         $log = Log::spy();
 
-        Posting::factory()->count(5)->create();
+        Posting::factory()->wanted()->count(5)->create();
 
         $outcome = $this->queue()->handle();
 
@@ -87,7 +87,7 @@ class QueuePostingsTest extends TestCase
 
     public function test_it_queues_the_oldest_posting_first(): void
     {
-        $postings = Posting::factory()->count(3)->create();
+        $postings = Posting::factory()->wanted()->count(3)->create();
 
         $this->queue()->handle();
 
@@ -101,11 +101,11 @@ class QueuePostingsTest extends TestCase
      * Nothing is lost. The postings stay where they are, and the first run
      * after the CV is fixed picks up everything that was waiting.
      */
-    public function test_a_master_cv_that_fails_lint_leaves_every_posting_captured(): void
+    public function test_a_master_cv_that_fails_lint_leaves_every_posting_wanted(): void
     {
         $this->storeMasterCv('master-cv/broken-missing-id.md');
 
-        Posting::factory()->count(3)->create();
+        Posting::factory()->wanted()->count(3)->create();
 
         try {
             $this->queue()->handle();
@@ -116,7 +116,7 @@ class QueuePostingsTest extends TestCase
 
         $this->assertDatabaseCount('revisions', 0);
         $this->assertDatabaseCount('master_cv_versions', 0);
-        $this->assertSame(3, Posting::query()->where('status', PostingStatus::Captured)->count());
+        $this->assertSame(3, Posting::query()->where('status', PostingStatus::Wanted)->count());
         $this->assertSame(0, Posting::query()->whereNotNull('current_revision_id')->count());
     }
 
@@ -126,7 +126,7 @@ class QueuePostingsTest extends TestCase
 
         $log = Log::spy();
 
-        Posting::factory()->count(3)->create();
+        Posting::factory()->wanted()->count(3)->create();
 
         try {
             $this->queue()->handle();
@@ -153,7 +153,7 @@ class QueuePostingsTest extends TestCase
     {
         $log = Log::spy();
 
-        Posting::factory()->create();
+        Posting::factory()->wanted()->create();
 
         try {
             app(QueuePostings::class)->handle();
@@ -170,7 +170,7 @@ class QueuePostingsTest extends TestCase
 
     public function test_a_posting_that_already_has_a_revision_is_not_given_another(): void
     {
-        $posting = Posting::factory()->create();
+        $posting = Posting::factory()->wanted()->create();
         $revision = Revision::factory()->for($posting)->create();
 
         $outcome = $this->queue()->handle();
@@ -178,18 +178,49 @@ class QueuePostingsTest extends TestCase
         $this->assertSame(0, $outcome->postings);
         $this->assertDatabaseCount('revisions', 1);
         $this->assertSame($revision->id, Revision::query()->sole()->id);
-        $this->assertSame(PostingStatus::Captured, $posting->refresh()->status);
+        $this->assertSame(PostingStatus::Wanted, $posting->refresh()->status);
     }
 
     public function test_re_running_it_queues_nothing_a_second_time(): void
     {
-        Posting::factory()->count(2)->create();
+        Posting::factory()->wanted()->count(2)->create();
 
         $this->queue()->handle();
         $outcome = $this->queue()->handle();
 
         $this->assertSame(0, $outcome->postings);
         $this->assertDatabaseCount('revisions', 2);
+    }
+
+    /**
+     * The gate. Capture is free and speculative, and generation is not, so a
+     * posting nobody has asked for is left exactly where it is — and costs
+     * nothing however many sweeps run over it.
+     */
+    public function test_a_captured_posting_is_left_alone(): void
+    {
+        $posting = Posting::factory()->create();
+
+        $outcome = $this->queue()->handle();
+        $this->queue()->handle();
+
+        $this->assertSame(0, $outcome->postings);
+        $this->assertDatabaseCount('revisions', 0);
+        $this->assertSame(PostingStatus::Captured, $posting->refresh()->status);
+        $this->assertNull($posting->current_revision_id);
+    }
+
+    public function test_it_queues_a_wanted_posting_and_ignores_a_captured_one(): void
+    {
+        $captured = Posting::factory()->create();
+        $wanted = Posting::factory()->wanted()->create();
+
+        $outcome = $this->queue()->handle();
+
+        $this->assertSame(1, $outcome->postings);
+        $this->assertSame($wanted->id, Revision::query()->sole()->posting_id);
+        $this->assertSame(PostingStatus::Queued, $wanted->refresh()->status);
+        $this->assertSame(PostingStatus::Captured, $captured->refresh()->status);
     }
 
     public function test_a_discarded_posting_is_never_queued(): void
@@ -204,10 +235,10 @@ class QueuePostingsTest extends TestCase
 
     public function test_an_unchanged_cv_reuses_the_version_already_stored(): void
     {
-        Posting::factory()->create();
+        Posting::factory()->wanted()->create();
         $this->queue()->handle();
 
-        Posting::factory()->create();
+        Posting::factory()->wanted()->create();
         $this->queue()->handle();
 
         $this->assertDatabaseCount('master_cv_versions', 1);
@@ -238,7 +269,7 @@ class QueuePostingsTest extends TestCase
     {
         $log = Log::spy();
 
-        $posting = Posting::factory()->create();
+        $posting = Posting::factory()->wanted()->create();
 
         $this->queue()->handle();
 
@@ -263,7 +294,7 @@ class QueuePostingsTest extends TestCase
      */
     public function test_a_concurrent_run_cannot_create_a_second_revision(): void
     {
-        $posting = Posting::factory()->create();
+        $posting = Posting::factory()->wanted()->create();
 
         /** @var Connection $connection */
         $connection = DB::connection();

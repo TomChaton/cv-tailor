@@ -11,8 +11,8 @@ Schedule::call(RecordSchedulerHeartbeat::class)
     ->name('scheduler.heartbeat')
     ->withoutOverlapping();
 
-// Nobody is waiting on a capture to become a revision, so five minutes is
-// soon enough, and a run that finds nothing costs one query. The task cannot
+// Nobody is waiting on a wanted posting to become a revision, so five minutes
+// is soon enough, and a run that finds nothing costs one query. The task cannot
 // overlap itself because a run that outlived the interval would otherwise race
 // the next one for the same postings.
 //

@@ -19,7 +19,7 @@ class CvQueueCommandTest extends TestCase
     {
         $this->storeMasterCv('master-cv/minimal.md');
 
-        Posting::factory()->count(2)->create();
+        Posting::factory()->wanted()->count(2)->create();
 
         $this->artisan('cv:queue')
             ->expectsOutputToContain('2 postings queued from master CV version 1.')
@@ -32,7 +32,7 @@ class CvQueueCommandTest extends TestCase
     {
         $this->storeMasterCv('master-cv/minimal.md');
 
-        Posting::factory()->create();
+        Posting::factory()->wanted()->create();
 
         $this->artisan('cv:queue')
             ->expectsOutputToContain('1 posting queued from master CV version 1.')
@@ -47,6 +47,24 @@ class CvQueueCommandTest extends TestCase
     }
 
     /**
+     * The gate, from the command somebody runs by hand: a captured posting is
+     * no work at all, and only the owner can make it some.
+     */
+    public function test_a_captured_posting_is_not_work(): void
+    {
+        $this->storeMasterCv('master-cv/minimal.md');
+
+        Posting::factory()->create();
+
+        $this->artisan('cv:queue')
+            ->expectsOutputToContain('Nothing waiting.')
+            ->assertSuccessful();
+
+        $this->assertDatabaseCount('revisions', 0);
+        $this->assertSame(PostingStatus::Captured, Posting::query()->sole()->status);
+    }
+
+    /**
      * Non-zero, so that someone running this by hand after fixing their CV
      * sees that it is still not fixed.
      */
@@ -54,7 +72,7 @@ class CvQueueCommandTest extends TestCase
     {
         $this->storeMasterCv('master-cv/broken-duplicate-id.md');
 
-        Posting::factory()->create();
+        Posting::factory()->wanted()->create();
 
         $this->artisan('cv:queue')
             ->expectsOutputToContain('cv:lint')
@@ -62,7 +80,7 @@ class CvQueueCommandTest extends TestCase
             ->assertFailed();
 
         $this->assertDatabaseCount('revisions', 0);
-        $this->assertSame(PostingStatus::Captured, Posting::query()->sole()->status);
+        $this->assertSame(PostingStatus::Wanted, Posting::query()->sole()->status);
     }
 
     /**
@@ -87,12 +105,28 @@ class CvQueueCommandTest extends TestCase
     {
         $this->storeMasterCv('master-cv/minimal.md');
 
-        Posting::factory()->create();
+        Posting::factory()->wanted()->create();
 
         $this->scheduled()->run(app());
 
         $this->assertDatabaseCount('revisions', 1);
         $this->assertSame(PostingStatus::Queued, Posting::query()->sole()->status);
+    }
+
+    /**
+     * A sweep leaves a captured posting alone. Nothing on a schedule spends
+     * money on a posting the owner has not asked for.
+     */
+    public function test_the_scheduled_run_leaves_a_captured_posting_alone(): void
+    {
+        $this->storeMasterCv('master-cv/minimal.md');
+
+        Posting::factory()->create();
+
+        $this->scheduled()->run(app());
+
+        $this->assertDatabaseCount('revisions', 0);
+        $this->assertSame(PostingStatus::Captured, Posting::query()->sole()->status);
     }
 
     /**
@@ -104,14 +138,14 @@ class CvQueueCommandTest extends TestCase
     {
         $this->storeMasterCv('master-cv/broken-duplicate-id.md');
 
-        Posting::factory()->create();
+        Posting::factory()->wanted()->create();
 
         $event = $this->scheduled();
         $event->run(app());
 
         $this->assertSame(0, $event->exitCode);
         $this->assertDatabaseCount('revisions', 0);
-        $this->assertSame(PostingStatus::Captured, Posting::query()->sole()->status);
+        $this->assertSame(PostingStatus::Wanted, Posting::query()->sole()->status);
     }
 
     private function scheduled(): CallbackEvent

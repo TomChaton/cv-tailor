@@ -31,6 +31,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property-read int $attempts
  * @property-read ?array<string, mixed> $output_json
  * @property-read ?array<array-key, mixed> $validation_json
+ * @property-read ?string $pdf_path
  */
 #[ObservedBy([RevisionObserver::class])]
 #[Fillable([

@@ -8,17 +8,19 @@ use Illuminate\Console\Command;
 use Symfony\Component\Console\Formatter\OutputFormatter;
 
 /**
- * Decides which captured postings are ready to be generated from.
+ * Gives every posting the owner has asked for a revision to be generated from.
  *
- * Scheduled, because the decision depends on a master CV that parses and
- * lints and a capture does not. Runnable by hand, because the answer to a
- * queue that has stopped is to fix the CV and run this.
+ * It sweeps `wanted`, so nothing here decides what is worth a CV: that
+ * decision is the owner's and is taken in the review UI. Scheduled, because
+ * the run depends on a master CV that parses and lints and a capture does not.
+ * Runnable by hand, because the answer to a queue that has stopped is to fix
+ * the CV and run this.
  */
 class CvQueueCommand extends Command
 {
     protected $signature = 'cv:queue';
 
-    protected $description = 'Queue captured postings for generation.';
+    protected $description = 'Queue wanted postings for generation.';
 
     public function handle(QueuePostings $queue): int
     {
