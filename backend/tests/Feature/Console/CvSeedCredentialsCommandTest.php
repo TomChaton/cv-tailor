@@ -5,13 +5,19 @@ namespace Tests\Feature\Console;
 use App\Jobs\ExtractPostingFields;
 use App\Models\User;
 use App\Observability\EventLogger;
+use App\Owner\SeedCredentials;
+use App\Owner\UpsertOwner;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Queue;
+use Mockery\MockInterface;
+use PDOException;
 use Tests\Support\RecordingEventLogger;
 use Tests\TestCase;
+use Throwable;
 
 class CvSeedCredentialsCommandTest extends TestCase
 {
@@ -235,6 +241,67 @@ class CvSeedCredentialsCommandTest extends TestCase
     }
 
     /**
+     * The entrypoint runs this under `set -e`, so a database that is locked or
+     * not writable must leave the stack coming up with the reason in its log
+     * rather than not coming up at all.
+     */
+    public function test_a_failure_the_action_throws_leaves_the_command_successful(): void
+    {
+        $this->seedingThrows($this->queryFailureQuoting(self::PASSWORD));
+
+        $this->artisan('cv:seed-credentials')->assertSuccessful();
+
+        $this->assertSame(['credentials.seeding_failed'], $this->log->events());
+        $this->assertSame(
+            QueryException::class,
+            $this->context('credentials.seeding_failed')['exception'],
+        );
+    }
+
+    /**
+     * The class of the failure is all that is logged. A query exception quotes
+     * the statement it came from, and the statement that writes an owner
+     * carries the password.
+     */
+    public function test_the_message_of_a_thrown_failure_does_not_reach_the_log(): void
+    {
+        $failure = $this->queryFailureQuoting(self::PASSWORD);
+
+        $this->assertStringContainsString(self::PASSWORD, $failure->getMessage());
+
+        $this->seedingThrows($failure);
+
+        $this->artisan('cv:seed-credentials')
+            ->doesntExpectOutputToContain(self::PASSWORD)
+            ->assertSuccessful();
+
+        $written = json_encode($this->log->lines);
+
+        $this->assertIsString($written);
+        $this->assertStringNotContainsString(self::PASSWORD, $written);
+        $this->assertStringNotContainsString($failure->getMessage(), $written);
+    }
+
+    /**
+     * Only the exit code is protected, and only where it is owned. The action
+     * still reports a failure by throwing, so every other caller gets one.
+     */
+    public function test_the_action_itself_still_throws(): void
+    {
+        $this->environment(owner: true, token: false);
+
+        $failure = $this->queryFailureQuoting(self::PASSWORD);
+
+        $this->mock(UpsertOwner::class, function (MockInterface $mock) use ($failure): void {
+            $mock->shouldReceive('handle')->once()->andThrow($failure);
+        });
+
+        $this->expectExceptionObject($failure);
+
+        $this->app->make(SeedCredentials::class)->handle();
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function context(string $event): array
@@ -244,6 +311,23 @@ class CvSeedCredentialsCommandTest extends TestCase
         $this->assertNotNull($line, $event.' was never written.');
 
         return $line['context'];
+    }
+
+    private function seedingThrows(Throwable $failure): void
+    {
+        $this->mock(SeedCredentials::class, function (MockInterface $mock) use ($failure): void {
+            $mock->shouldReceive('handle')->once()->andThrow($failure);
+        });
+    }
+
+    private function queryFailureQuoting(string $password): QueryException
+    {
+        return new QueryException(
+            'sqlite',
+            'insert into "users" ("name", "email", "password") values (?, ?, ?)',
+            [self::NAME, self::EMAIL, $password],
+            new PDOException('attempt to write a readonly database'),
+        );
     }
 
     private function environment(bool $owner, bool $token): void

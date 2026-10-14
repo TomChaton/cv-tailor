@@ -205,7 +205,11 @@ class RevisionChainTest extends TestCase
         $bus->dispatch(new RenderValidatedRevision($first));
         $bus->dispatch(new RenderValidatedRevision($second));
 
-        $this->artisan('queue:work', ['--stop-when-empty' => true]);
+        // The worker's own memory ceiling, raised past the one it defaults to:
+        // it measures the whole PHP process, which here is the test suite, so
+        // a default-sized worker stops after one job and the second revision
+        // looks like a converter that was never called.
+        $this->artisan('queue:work', ['--stop-when-empty' => true, '--memory' => 2048]);
 
         foreach ([$first, $second] as $revision) {
             $stored = $revision->fresh();
