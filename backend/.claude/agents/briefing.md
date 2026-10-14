@@ -1643,6 +1643,13 @@ goes where it is told, which has to be somewhere writable, and
   longer of the two, or a job that is merely slow is handed to a second worker
   while the first is still working on it, and the pipeline's jobs are the slow
   ones. Change either number and change both.
+- **A test that drives `queue:work` states the worker's memory ceiling.** The
+  worker measures the whole PHP process, and under a test that process is the
+  suite, so a worker left on its default finds itself already over the limit
+  and stops partway through the queue. The jobs it never reached then read as
+  work nothing asked for — a collaborator that was never called rather than a
+  worker that stopped early — which is why the symptom is a test that passes
+  on its own and fails in the suite.
 - **A mistyped column name is a silent zero on SQLite**, which is why a count
   is guarded rather than trusted. SQLite reads a double-quoted identifier that
   matches no column as a string literal, so counting `status` on a table whose
