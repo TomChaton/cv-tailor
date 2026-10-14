@@ -18,6 +18,11 @@ class RevisionsSection extends CountByStatusSection
         return Revision::query();
     }
 
+    protected function column(): string
+    {
+        return 'status';
+    }
+
     protected function statuses(): array
     {
         return RevisionStatus::values();

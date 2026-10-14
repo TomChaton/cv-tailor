@@ -18,6 +18,11 @@ class PostingsSection extends CountByStatusSection
         return Posting::query();
     }
 
+    protected function column(): string
+    {
+        return 'status';
+    }
+
     protected function statuses(): array
     {
         return PostingStatus::values();

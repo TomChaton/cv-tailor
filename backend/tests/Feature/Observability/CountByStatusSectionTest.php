@@ -2,13 +2,19 @@
 
 namespace Tests\Feature\Observability;
 
+use App\Batching\LlmBatchState;
+use App\Models\LlmBatch;
 use App\Models\Posting;
 use App\Models\Revision;
+use App\Observability\Status\BatchesSection;
+use App\Observability\Status\CountByStatusSection;
 use App\Observability\Status\PostingsSection;
 use App\Observability\Status\RevisionsSection;
 use App\Postings\PostingStatus;
 use App\Revisions\RevisionStatus;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use RuntimeException;
 use Tests\TestCase;
 
 class CountByStatusSectionTest extends TestCase
@@ -52,5 +58,72 @@ class CountByStatusSectionTest extends TestCase
         $this->assertSame('2', $rows['pending']);
         $this->assertSame('1', $rows['failed']);
         $this->assertSame('0', $rows['ready']);
+    }
+
+    public function test_it_counts_batches_by_state(): void
+    {
+        LlmBatch::factory()->count(2)->create();
+        LlmBatch::factory()->inState(LlmBatchState::Ended)->create();
+
+        $rows = app(BatchesSection::class)->rows();
+
+        $this->assertSame('2', $rows['submitted']);
+        $this->assertSame('1', $rows['ended']);
+        $this->assertSame('0', $rows['collected']);
+    }
+
+    /**
+     * One row in each state at once: a count that reads the wrong column
+     * returns zero for all of them, and a count that reads the right one
+     * cannot.
+     */
+    public function test_it_counts_a_batch_in_every_state_the_enum_has(): void
+    {
+        foreach (LlmBatchState::cases() as $state) {
+            LlmBatch::factory()->inState($state)->create();
+        }
+
+        $rows = app(BatchesSection::class)->rows();
+
+        foreach (LlmBatchState::values() as $state) {
+            $this->assertSame('1', $rows[$state], $state.' was not counted');
+        }
+    }
+
+    /**
+     * A column the table does not have is a mistake that SQLite answers with
+     * a zero, so the section has to answer it with an exception instead.
+     */
+    public function test_a_section_counting_a_column_its_table_lacks_fails_loudly(): void
+    {
+        Posting::factory()->create();
+
+        $section = new class extends CountByStatusSection
+        {
+            public function heading(): string
+            {
+                return 'Nonexistent';
+            }
+
+            protected function query(): Builder
+            {
+                return Posting::query();
+            }
+
+            protected function column(): string
+            {
+                return 'state';
+            }
+
+            protected function statuses(): array
+            {
+                return ['captured'];
+            }
+        };
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('postings has no column state');
+
+        $section->rows();
     }
 }
