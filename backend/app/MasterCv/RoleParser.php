@@ -22,6 +22,22 @@ class RoleParser
     private const TECH_STACK = 'tech stack';
 
     /**
+     * The labels this tool knows, written the way a note names them to a
+     * reader who would rather use one than invent their own.
+     *
+     * Spellings it also accepts are deliberately not among them: a reader
+     * asking what the alternatives are wants the alternatives, not a list of
+     * synonyms for one of them.
+     */
+    public const RECOGNISED_LABELS = [
+        'Context',
+        'Tech stack',
+        'Achievements & projects',
+        'Responsibilities',
+        'Projects',
+    ];
+
+    /**
      * Labels whose bullets are achievements and which this tool expects. Any
      * other label is also an achievement container, and additionally reported.
      */

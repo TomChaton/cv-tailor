@@ -16,4 +16,10 @@ namespace App\MasterCv\Lint;
 enum Remedy
 {
     case AddMissingIds;
+
+    /**
+     * Choose, from the roles and projects the document already holds, which
+     * of them a skills-index row names.
+     */
+    case ChooseWhereUsed;
 }

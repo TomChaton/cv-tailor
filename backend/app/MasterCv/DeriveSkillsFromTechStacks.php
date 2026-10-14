@@ -94,7 +94,7 @@ class DeriveSkillsFromTechStacks
                         'used' => [],
                     ];
 
-                    $where = $this->whereUsed($role);
+                    $where = $role->whereUsed();
 
                     if (! in_array($where, $rows[$id]['used'], true)) {
                         $rows[$id]['used'][] = $where;
@@ -104,21 +104,6 @@ class DeriveSkillsFromTechStacks
         }
 
         return $rows;
-    }
-
-    /**
-     * How a derived row names the role it came from.
-     *
-     * An independent project is marked as one, the way the author's own rows
-     * mark it. A row reading only "Fathom Index" would offer the model a
-     * technology with nothing to say it was not commercial work, and the CV's
-     * own rules turn on that distinction.
-     */
-    private function whereUsed(Role $role): string
-    {
-        return $role->kind === RoleKind::Independent
-            ? 'Independent: '.$role->employer
-            : $role->employer;
     }
 
     /**

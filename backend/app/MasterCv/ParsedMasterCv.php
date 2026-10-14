@@ -68,6 +68,39 @@ final readonly class ParsedMasterCv
     }
 
     /**
+     * A skills-index row the author wrote, by the ID a slug of its name gives
+     * it.
+     *
+     * Derived rows are passed over throughout. A derived row's line is the
+     * tech-stack entry it came from, so several share one and none of them is
+     * a row in the index at all — which makes it the last place anything
+     * should write.
+     */
+    public function writtenSkill(string $id): ?Skill
+    {
+        return $this->firstWrittenSkill(static fn (Skill $skill): bool => $skill->id === $id);
+    }
+
+    public function writtenSkillAtLine(int $line): ?Skill
+    {
+        return $this->firstWrittenSkill(static fn (Skill $skill): bool => $skill->line === $line);
+    }
+
+    /**
+     * @param  callable(Skill): bool  $matches
+     */
+    private function firstWrittenSkill(callable $matches): ?Skill
+    {
+        foreach ($this->allSkills() as $skill) {
+            if (! $skill->derived && $matches($skill)) {
+                return $skill;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Counts per kind, for the parse log event. A parser regression that
      * silently drops half the file shows up here and nowhere else.
      *

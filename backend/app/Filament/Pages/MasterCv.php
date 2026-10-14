@@ -2,18 +2,25 @@
 
 namespace App\Filament\Pages;
 
+use App\MasterCv\Fixes\RewriteWhereUsed;
+use App\MasterCv\Fixes\WhereUsedChoices;
 use App\MasterCv\InspectMasterCv;
 use App\MasterCv\Lint\Finding;
+use App\MasterCv\Lint\Remedy;
+use App\MasterCv\MasterCvParser;
 use App\MasterCv\MasterCvReport;
+use App\MasterCv\ParsedMasterCv;
 use App\MasterCv\SaveMasterCv;
 use BackedEnum;
 use Filament\Actions\Action;
+use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\Textarea;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Schemas\Components\Component;
 use Filament\Schemas\Components\Fieldset;
+use Filament\Schemas\Components\Flex;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Group;
 use Filament\Schemas\Components\Section;
@@ -62,19 +69,33 @@ class MasterCv extends Page
 
     private ?MasterCvReport $report = null;
 
+    private ?ParsedMasterCv $editing = null;
+
+    private ?string $editingMarkdown = null;
+
     private InspectMasterCv $inspect;
 
     private SaveMasterCv $saveMasterCv;
+
+    private MasterCvParser $parser;
+
+    private RewriteWhereUsed $rewriteWhereUsed;
 
     /**
      * Livewire constructs its own components, so there is no constructor to
      * inject into. It resolves a lifecycle hook's parameters from the
      * container on every request, which is where the dependencies come from.
      */
-    public function boot(InspectMasterCv $inspect, SaveMasterCv $save): void
-    {
+    public function boot(
+        InspectMasterCv $inspect,
+        SaveMasterCv $save,
+        MasterCvParser $parser,
+        RewriteWhereUsed $rewriteWhereUsed,
+    ): void {
         $this->inspect = $inspect;
         $this->saveMasterCv = $save;
+        $this->parser = $parser;
+        $this->rewriteWhereUsed = $rewriteWhereUsed;
     }
 
     public function mount(): void
@@ -167,9 +188,7 @@ class MasterCv extends Page
      */
     public function save(): void
     {
-        $markdown = $this->data['markdown'] ?? '';
-
-        $this->report = $this->saveMasterCv->handle(is_string($markdown) ? $markdown : '');
+        $this->report = $this->saveMasterCv->handle($this->markdown());
 
         Notification::make()
             ->title(__('master-cv.saved'))
@@ -292,7 +311,7 @@ class MasterCv extends Page
                 ->columns(1)
                 ->schema([
                     UnorderedList::make(array_map(
-                        fn (Finding $finding, int $position): Action|string => $this->finding($finding, $position),
+                        fn (Finding $finding, int $position): Action|Component|string => $this->finding($finding, $position),
                         $findings,
                         array_keys($findings),
                     ))
@@ -306,7 +325,8 @@ class MasterCv extends Page
     }
 
     /**
-     * One finding, beside the editor it is about.
+     * One finding, beside the editor it is about, and beside the fix where
+     * there is one this page can make.
      *
      * A finding that names a line is a button that selects it. The number was
      * only ever being read to find the line, and finding it by eye in a
@@ -319,7 +339,15 @@ class MasterCv extends Page
      * Notes behave exactly as problems do. One fails the CV and the other
      * does not, and neither fact has anything to do with finding the line.
      */
-    private function finding(Finding $finding, int $position): Action|string
+    private function finding(Finding $finding, int $position): Action|Component|string
+    {
+        $control = $this->findingControl($finding, $position);
+        $fix = $this->whereUsedFix($finding);
+
+        return $fix === null ? $control : Flex::make([$control, $fix]);
+    }
+
+    private function findingControl(Finding $finding, int $position): Action|string
     {
         if ($finding->line === null) {
             return $this->findingText($finding);
@@ -332,6 +360,116 @@ class MasterCv extends Page
             // server has nothing to say about it, and a round trip would be
             // a round trip per problem read.
             ->alpineClickHandler('selectLine('.$finding->line.')');
+    }
+
+    /**
+     * Choosing, from the roles and projects the document holds, which of them
+     * a skills-index row names.
+     *
+     * Only this class of problem carries it. A problem with no fix this page
+     * can make shows no control suggesting otherwise.
+     *
+     * Everything the modal offers is built when it opens, from the CV in the
+     * editor, so the choices are the document's own and an answer that is not
+     * in the document cannot be given.
+     */
+    private function whereUsedFix(Finding $finding): ?Action
+    {
+        if ($finding->remedy !== Remedy::ChooseWhereUsed || $finding->line === null) {
+            return null;
+        }
+
+        $reported = $this->getReport()->parsed?->writtenSkillAtLine($finding->line);
+
+        if ($reported === null) {
+            return null;
+        }
+
+        $id = $reported->id;
+
+        return Action::make('whereUsed_'.$id)
+            ->label(__('master-cv.actions.where_used'))
+            ->link()
+            // A row the editor no longer holds has nothing to choose for.
+            // The findings are the last lint's; the editor is now.
+            ->visible(fn (): bool => $this->editing()->writtenSkill($id) !== null)
+            ->modalHeading(fn (): string => ($this->editing()->writtenSkill($id) ?? $reported)->name)
+            ->modalSubmitActionLabel(__('master-cv.actions.save'))
+            ->schema(fn (): array => [
+                CheckboxList::make('where_used')
+                    ->label(__('master-cv.where_used'))
+                    ->options(WhereUsedChoices::of($this->editing())->all()),
+            ])
+            ->fillForm(fn (): array => [
+                'where_used' => WhereUsedChoices::of($this->editing())
+                    ->selected($this->editing()->writtenSkill($id)?->whereUsed),
+            ])
+            ->action(function (array $data) use ($id): void {
+                /** @var array<array-key, mixed> $chosen */
+                $chosen = is_array($data['where_used'] ?? null) ? $data['where_used'] : [];
+
+                $this->chooseWhereUsed($id, array_values(array_filter($chosen, is_string(...))));
+            });
+    }
+
+    /**
+     * Writes one row's "Where used" cell, then saves and re-lints.
+     *
+     * Choosing nothing is an answer: a skill the author has not placed yet
+     * claims no roles, and a row claiming nothing is better than a row
+     * claiming something that is not in the file.
+     *
+     * @param  list<string>  $chosen
+     */
+    private function chooseWhereUsed(string $id, array $chosen): void
+    {
+        $editing = $this->editing();
+        $skill = $editing->writtenSkill($id);
+
+        if ($skill === null) {
+            return;
+        }
+
+        $this->data['markdown'] = $this->rewriteWhereUsed->handle(
+            $this->markdown(),
+            $skill,
+            WhereUsedChoices::of($editing)->cell($chosen),
+        );
+
+        $this->save();
+    }
+
+    /**
+     * The CV as the editor holds it, which is what a guided fix reads and
+     * writes.
+     *
+     * Not the stored copy. The editor may hold changes nobody has saved, and
+     * a fix that wrote around them would throw them away. On a page that has
+     * only been looked at the two are the same text, and the parse of it has
+     * already been paid for once.
+     */
+    private function editing(): ParsedMasterCv
+    {
+        $markdown = $this->markdown();
+        $report = $this->getReport();
+
+        if ($report->parsed !== null && $markdown === $report->markdown) {
+            return $report->parsed;
+        }
+
+        if ($this->editing === null || $this->editingMarkdown !== $markdown) {
+            $this->editingMarkdown = $markdown;
+            $this->editing = $this->parser->parse($markdown);
+        }
+
+        return $this->editing;
+    }
+
+    private function markdown(): string
+    {
+        $markdown = $this->data['markdown'] ?? '';
+
+        return is_string($markdown) ? $markdown : '';
     }
 
     /**

@@ -11,6 +11,7 @@ use App\MasterCv\Lint\Finding;
 use App\MasterCv\Lint\LintReport;
 use App\MasterCv\Lint\MasterCvLinter;
 use App\MasterCv\Lint\Remedy;
+use App\MasterCv\RoleParser;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Tests\Concerns\MasterCvFixtures;
@@ -110,6 +111,69 @@ class MasterCvLinterTest extends TestCase
         $this->assertCount(3, $labels);
         $this->assertSame(204, $labels[0]->line);
         $this->assertTrue($report->passes());
+    }
+
+    /**
+     * A reader told only that their label is unknown cannot choose one that
+     * is. The note offers no remedy, because there is nothing wrong to fix.
+     */
+    public function test_an_unknown_block_label_note_names_the_labels_that_are_known(): void
+    {
+        $note = array_values(array_filter(
+            $this->lint()->notes(),
+            static fn (Finding $finding): bool => $finding->check === 'block_labels',
+        ))[0];
+
+        $this->assertStringContainsString(
+            'It knows Context, Tech stack, Achievements & projects, Responsibilities and Projects.',
+            $note->message,
+        );
+        $this->assertNull($note->remedy);
+    }
+
+    /**
+     * The note is an offer, so every label it names has to be one the parser
+     * accepts.
+     */
+    #[DataProvider('recognisedLabels')]
+    public function test_a_label_the_note_names_raises_no_note_of_its_own(string $label): void
+    {
+        $cv = $this->parser()->parse(str_replace(
+            '**Achievements & projects**',
+            '**'.$label.'**',
+            $this->fixture('master-cv/minimal.md'),
+        ));
+
+        $this->assertSame([], array_filter(
+            $this->linter()->lint($cv)->notes(),
+            static fn (Finding $finding): bool => $finding->check === 'block_labels',
+        ));
+    }
+
+    /**
+     * @return array<string, array{0: string}>
+     */
+    public static function recognisedLabels(): array
+    {
+        $cases = [];
+
+        foreach (RoleParser::RECOGNISED_LABELS as $label) {
+            $cases[$label] = [$label];
+        }
+
+        return $cases;
+    }
+
+    /**
+     * The answers are the roles and projects the file already holds, so the
+     * remedy is a set to choose from rather than a command to run.
+     */
+    public function test_a_row_naming_no_role_names_the_remedy_for_it(): void
+    {
+        $report = $this->lint('master-cv/broken-skill-names-no-role.md');
+
+        $this->assertSame(Remedy::ChooseWhereUsed, $report->problems()[0]->remedy);
+        $this->assertSame([Remedy::ChooseWhereUsed], $report->remedies());
     }
 
     public function test_a_hierarchy_a_sub_bullet_does_not_belong_to_is_a_problem(): void

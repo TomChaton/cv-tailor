@@ -56,6 +56,22 @@ final readonly class Role
     }
 
     /**
+     * How a skills-index row names this role.
+     *
+     * An independent project says so. A row naming only the project would
+     * offer a technology with nothing to say it was not commercial work, and
+     * the CV's own rules turn on that distinction. Every row that names a role
+     * without the author typing it — derived or chosen — says it the same way,
+     * so the index reads as one document.
+     */
+    public function whereUsed(): string
+    {
+        return $this->kind === RoleKind::Independent
+            ? 'Independent: '.$this->employer
+            : $this->employer;
+    }
+
+    /**
      * @return list<string> Every technology named in the role's tech stack.
      */
     public function technologies(): array

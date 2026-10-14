@@ -78,6 +78,9 @@ class CvLintCommand extends Command
     {
         return match ($remedy) {
             Remedy::AddMissingIds => 'Run "php artisan cv:id" to write the IDs that are missing.',
+            // No command does this one. The answers are the roles and
+            // projects in the file, and the page is where they are offered.
+            Remedy::ChooseWhereUsed => 'Choose where the skill was used on the master CV page.',
         };
     }
 

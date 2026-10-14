@@ -8,6 +8,7 @@ use App\MasterCv\InspectMasterCv;
 use App\MasterCv\Lint\Finding;
 use App\Models\MasterCv;
 use App\Models\User;
+use Filament\Actions\Testing\TestAction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -332,6 +333,205 @@ class MasterCvPageTest extends TestCase
         Livewire::test(MasterCvPage::class)
             ->callAction('addIds')
             ->assertFileDownloaded(__('master-cv.download_with_ids_filename'), $expected);
+    }
+
+    /**
+     * The cell has a closed set of valid answers, so the problem about it
+     * comes with the way to answer. A problem this page cannot fix shows no
+     * control suggesting otherwise.
+     */
+    public function test_only_a_where_used_problem_carries_a_choice(): void
+    {
+        $this->signIn();
+        $this->storeMasterCv('master-cv/broken-skill-names-no-role.md');
+
+        Livewire::test(MasterCvPage::class)
+            ->assertActionVisible($this->whereUsed('php-8x-83'));
+    }
+
+    /**
+     * @return array<string, array{0: string}>
+     */
+    public static function fixturesWithOtherProblems(): array
+    {
+        return [
+            'a duplicate ID' => ['broken-duplicate-id.md'],
+            'a missing ID' => ['broken-missing-id.md'],
+            'a missing section' => ['broken-missing-section.md'],
+            'an unknown block label' => ['../master-cv.md'],
+        ];
+    }
+
+    #[DataProvider('fixturesWithOtherProblems')]
+    public function test_no_other_finding_carries_a_choice(string $fixture): void
+    {
+        $this->signIn();
+        $this->storeMasterCv('master-cv/'.$fixture);
+
+        $this->assertStringNotContainsString(
+            "mountAction('whereUsed",
+            $this->render(),
+        );
+    }
+
+    /**
+     * The list comes from the parse, so an answer that is not a role or
+     * project in the document is not on offer at all.
+     */
+    public function test_the_modal_names_the_skill_and_offers_every_role_and_project(): void
+    {
+        $this->signIn();
+        $this->storeMarkdown($this->withBrokenRustRow());
+
+        $page = Livewire::test(MasterCvPage::class)
+            ->mountAction($this->whereUsed('rust'))
+            ->assertActionMounted($this->whereUsed('rust'));
+
+        $page->assertMountedActionModalSee([
+            'Rust',
+            (string) __('master-cv.where_used'),
+            'Harlequin Transit',
+            'Northgate Tickets',
+            'Pelham Civic Data',
+            'Larkspur Media',
+            'Independent: Fathom Index',
+            'Independent: Quayside Charts',
+        ]);
+
+        $page->assertMountedActionModalDontSee('Pentland Haulage');
+    }
+
+    /**
+     * A problem of this class is a cell where nothing resolves, so there is
+     * nothing to carry over. Which parts of a cell do resolve is
+     * `WhereUsedChoices`' own test.
+     */
+    public function test_a_cell_that_resolves_to_nothing_pre_selects_nothing(): void
+    {
+        $this->signIn();
+        $this->storeMarkdown($this->withBrokenRustRow());
+
+        Livewire::test(MasterCvPage::class)
+            ->mountAction($this->whereUsed('rust'))
+            ->assertActionDataSet(['where_used' => []]);
+    }
+
+    public function test_confirming_rewrites_that_row_and_re_lints(): void
+    {
+        $this->signIn();
+        $this->storeMasterCv('master-cv/broken-skill-names-no-role.md');
+
+        Livewire::test(MasterCvPage::class)
+            ->assertSee(__('master-cv.checks.skills_index_references'))
+            ->callAction($this->whereUsed('php-8x-83'), ['where_used' => ['wrenbury-freight']])
+            ->assertHasNoActionErrors()
+            ->assertSee(__('master-cv.passes'));
+
+        // One line apart from the broken fixture, and that line is the row.
+        $this->assertSame(
+            $this->fixture('master-cv/minimal.md'),
+            MasterCv::query()->sole()->markdown,
+        );
+    }
+
+    /**
+     * The CV's own rules turn on commercial experience against personal work,
+     * so a chosen project says it is one.
+     */
+    public function test_an_independent_project_is_written_as_one(): void
+    {
+        $this->signIn();
+        $this->storeMarkdown($this->withBrokenRustRow());
+
+        Livewire::test(MasterCvPage::class)
+            ->callAction($this->whereUsed('rust'), ['where_used' => ['fathom-index']]);
+
+        $this->assertSame(
+            str_replace(
+                '| Rust | Independent: Fathom Index (indexer) |',
+                '| Rust | Independent: Fathom Index |',
+                $this->fixture(),
+            ),
+            MasterCv::query()->sole()->markdown,
+        );
+    }
+
+    /**
+     * A legitimate answer for a skill its author has not placed yet.
+     */
+    public function test_confirming_with_nothing_selected_is_accepted(): void
+    {
+        $this->signIn();
+        $this->storeMasterCv('master-cv/broken-skill-names-no-role.md');
+
+        Livewire::test(MasterCvPage::class)
+            ->callAction($this->whereUsed('php-8x-83'), ['where_used' => []])
+            ->assertHasNoActionErrors();
+
+        $this->assertSame(
+            str_replace(
+                '| PHP 8.x (8.3) | Pentland Haulage |',
+                '| PHP 8.x (8.3) | |',
+                $this->fixture('master-cv/broken-skill-names-no-role.md'),
+            ),
+            MasterCv::query()->sole()->markdown,
+        );
+    }
+
+    /**
+     * The set on offer is the whole of what may be written, so an answer from
+     * anywhere else reaches the document through nothing: the form refuses
+     * what the options do not hold, and the cell is composed from the parse
+     * rather than from what came back.
+     */
+    public function test_an_answer_the_document_does_not_offer_never_reaches_it(): void
+    {
+        $this->signIn();
+        $this->storeMasterCv('master-cv/broken-skill-names-no-role.md');
+
+        Livewire::test(MasterCvPage::class)
+            ->callAction($this->whereUsed('php-8x-83'), ['where_used' => ['pentland-haulage']])
+            ->assertHasActionErrors();
+
+        $this->assertSame(
+            $this->fixture('master-cv/broken-skill-names-no-role.md'),
+            MasterCv::query()->sole()->markdown,
+        );
+    }
+
+    /**
+     * An unrecognised block label is allowed and the behaviour is already
+     * sensible, so the note informs and offers nothing.
+     */
+    public function test_a_block_label_note_names_the_recognised_labels_and_offers_no_fix(): void
+    {
+        $this->signIn();
+        $this->storeMasterCv();
+
+        $this->get(MasterCvPage::getUrl())
+            ->assertSuccessful()
+            ->assertSee(
+                'It knows Context, Tech stack, Achievements &amp; projects, Responsibilities and Projects.',
+                escape: false,
+            );
+    }
+
+    private function whereUsed(string $skill): TestAction
+    {
+        return TestAction::make('whereUsed_'.$skill)->schemaComponent();
+    }
+
+    /**
+     * The fictional CV with one skills-index row naming an employer it does
+     * not have — one line apart from a CV that passes lint.
+     */
+    private function withBrokenRustRow(): string
+    {
+        return str_replace(
+            '| Rust | Independent: Fathom Index (indexer) |',
+            '| Rust | Pentland Haulage |',
+            $this->fixture(),
+        );
     }
 
     private function signIn(): void

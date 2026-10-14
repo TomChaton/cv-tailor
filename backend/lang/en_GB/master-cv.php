@@ -31,6 +31,7 @@ return [
     'passes' => 'Fit to generate from.',
     'notes' => 'Notes',
     'finding' => 'line :line — :message',
+    'where_used' => 'Where used',
 
     'checks' => [
         'sections' => 'Sections',
@@ -44,6 +45,7 @@ return [
         'save' => 'Save',
         'download' => 'Download',
         'add_ids' => 'Add missing IDs',
+        'where_used' => 'Choose where used',
     ],
 
     'download_filename' => 'master-cv.md',
