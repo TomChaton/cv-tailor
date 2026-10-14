@@ -17,6 +17,9 @@
   "capturePageUnreadable": {
     "message": "Page cannot be read"
   },
+  "capturePageBlank": {
+    "message": "Page read as blank"
+  },
   "captureUnreachable": {
     "message": "Backend unreachable"
   },

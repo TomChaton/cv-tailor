@@ -5,13 +5,17 @@
  *
  * There is no "nothing found": whether a page holds a job description is the
  * backend's judgement, and every page the owner captures is sent.
- * `page-unreadable` is a different fact — a page this extension may not touch.
+ * `page-unreadable` is a different fact — a page this extension may not touch —
+ * and so is `page-blank`, which is a page that read as no text at all. Neither
+ * is a judgement about what a page holds: one could not be read, and the other
+ * left nothing to send.
  */
 export type CaptureOutcome =
   | 'saved'
   | 'already-saved'
   | 'not-configured'
   | 'page-unreadable'
+  | 'page-blank'
   | 'unreachable'
   | 'token-rejected'
   | 'backend-error'
@@ -23,6 +27,7 @@ const MESSAGES: Record<CaptureOutcome, string> = {
   'already-saved': 'captureAlreadySaved',
   'not-configured': 'captureNotConfigured',
   'page-unreadable': 'capturePageUnreadable',
+  'page-blank': 'capturePageBlank',
   unreachable: 'captureUnreachable',
   'token-rejected': 'captureTokenRejected',
   'backend-error': 'captureBackendError',

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { readPage } from '../src/capture/read-page';
 
 import jobWithHiddenText from './fixtures/job-with-hidden-text.html?raw';
+import jobBoardPage from './fixtures/linkedin-job.html?raw';
 import jobWithJsonLd from './fixtures/job-with-json-ld.html?raw';
 import jobWithoutJsonLd from './fixtures/job-without-json-ld.html?raw';
 import thinPage from './fixtures/thin-page.html?raw';
@@ -156,5 +157,46 @@ describe('readPage', () => {
     const { posting } = readPage(load('<body><p>Senior PHP Engineer, Leeds.</p></body>'), PAGE_URL);
 
     expect(posting.page_text).toBe('Senior PHP Engineer, Leeds.');
+  });
+});
+
+/**
+ * A page saved from a job board in use, trimmed to what reading a page needs:
+ * the board's own wrappers, its own stylesheet rules about what is visible, and
+ * one job whose words are invented. A fixture written by hand holds only the
+ * hiding techniques whoever wrote it thought of, and a board's own markup is
+ * where the surprises are.
+ */
+describe('readPage over a job board\'s own page', () => {
+  it('reads the text a reader sees, through wrappers that lay out no box', () => {
+    const { posting } = readPage(load(jobBoardPage), PAGE_URL);
+
+    expect(posting.page_text).toContain('About the job');
+    expect(posting.page_text).toContain('Lead PHP Engineer');
+    expect(posting.page_text).toContain('the platform team owns the systems that decide which wagon goes where');
+    expect(posting.page_text).toContain('A habit of writing tests that describe behaviour');
+    expect(posting.page_text).toContain('About the company');
+  });
+
+  it('leaves out what the board keeps out of sight, and counts it', () => {
+    const read = readPage(load(jobBoardPage), PAGE_URL);
+
+    // A clipped heading for screen readers, and a skip-navigation block held at
+    // zero opacity until it takes focus.
+    expect(read.posting.page_text).not.toContain('notifications');
+    expect(read.posting.page_text).not.toContain('Skip to main content');
+
+    expect(read.posting.has_hidden_text).toBe(true);
+    expect(read.hiddenCharacters).toBe(100);
+  });
+
+  /**
+   * The board marks its own truncation toggle `aria-hidden`, and it is plainly
+   * on the page.
+   */
+  it('keeps the text the board hides from assistive technology only', () => {
+    const { posting } = readPage(load(jobBoardPage), PAGE_URL);
+
+    expect(posting.page_text).toContain('… more');
   });
 });

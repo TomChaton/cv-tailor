@@ -47,6 +47,12 @@ build.
 - **There is therefore no "nothing found".** Any page the owner chose to
   capture is a page worth capturing, and there is no floor on how much text it
   has to hold.
+- **A read that comes back empty is the one exception, and it is not a
+  judgement about the page.** Nothing asks whether the text is a job
+  description and no page is refused for being short — but an empty read leaves
+  nothing to send, and a capture of nothing is one the backend can only refuse.
+  So it is not sent and not queued, and the extension says the page read as
+  blank.
 - **Only visible text is sent.** Reading uses rendered text (`innerText`,
   skipping hidden elements), not `textContent`. If the page held hidden text,
   the capture says so. Hidden text in a listing is sometimes aimed at AI tools,
@@ -59,6 +65,15 @@ build.
   hidden parts dropped.
 - **`aria-hidden` does not count as hidden.** It hides an element from
   assistive technology, not from the person looking at the page.
+- **An element that lays out no box of its own is not hidden.** A browser
+  answers the visibility question about boxes and reports a box-less element as
+  not visible, but `display: contents` removes only the box: the children drawn
+  in its place are on the page, and so is their text. Boards wrap whole regions
+  in such an element, and because a hidden element takes its subtree with it, one
+  misjudged wrapper costs the region and a wrapper near the root costs the page.
+  So hiddenness is asked of the children of a box-less element and never of the
+  element, and the out-of-sight rules are not asked of it either — clipping,
+  position and opacity each need a box to apply to.
 - **The page's `JobPosting` JSON-LD is sent as the page wrote it**, where the
   page published one. What its fields mean is the backend's to decide: reading
   schema.org is a judgement about data, and nothing here looks at a single
@@ -108,9 +123,10 @@ reading those from storage is the options page's job.
   active tab; the work itself happens in the service worker, because the popup
   closes the moment the owner clicks away and a capture must not close with it.
 - **The popup shows one line**: what happened — saved, already saved, not
-  configured, a page it may not read, or what the backend said. There is no
-  "nothing found on the page": whether a page holds a job description is the
-  backend's judgement. A second line appears only while the capture is still
+  configured, a page it may not read, a page that read as blank, or what the
+  backend said. There is no "nothing found on the page": whether a page holds a
+  job description is the backend's judgement, and a blank read answers a
+  different question — whether there was anything to send at all. A second line appears only while the capture is still
   waiting to be sent, and a way into the settings only when there are none.
 - **The badge shows what is outstanding.** A count while captures wait to be
   sent, because that is the one thing the owner cannot find out any other way;
@@ -178,9 +194,21 @@ reading those from storage is the options page's job.
   data. They are the inner HTML of `<html>` and load into the test's own
   document, because reading a page asks the browser what is visible and that
   needs a document with its styles applied.
+- **One fixture is a page saved from a board in use**, trimmed to what reading
+  a page needs: the board's own wrappers, the rules from its own stylesheet that
+  decide what is visible, and a job whose words are invented, because a real
+  job's words are not ours to publish and a real page carries the owner's
+  profile all through it. A fixture written by hand holds only the hiding
+  techniques whoever wrote it thought of, and the ones that break a reader are
+  the ones nobody thought of.
 - **The tests run against a DOM implementation, not a browser.** It answers
   `checkVisibility` and `getComputedStyle`, which is what visibility is decided
   with, so a hiding technique can be proved excluded without driving Chrome.
+- **Where that DOM answers more generously than a browser, the suite teaches it
+  the browser's answer** (`tests/browser-visibility.ts`). It lays nothing out,
+  so it cannot say whether an element has a box, and it calls a box-less element
+  visible. Under its own answer a page a browser reads as blank reads perfectly,
+  and a fixture carrying such a page proves nothing at all.
 
 ## Commands
 

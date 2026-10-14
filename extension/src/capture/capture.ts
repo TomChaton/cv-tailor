@@ -44,6 +44,13 @@ export async function captureTab(tabId: number, now: number = Date.now()): Promi
     hiddenCharacters: read.hiddenCharacters,
   });
 
+  // A page that read as no text at all is the one case with nothing to send.
+  // Not a judgement about what the page holds — the backend still makes that —
+  // but a capture of nothing is a capture the backend can only refuse.
+  if (read.posting.page_text === '') {
+    return await report('page-blank');
+  }
+
   const client = createApiClient(settings.baseUrl, settings.token);
   const entry = await enqueue(read.posting, now);
   const outcome = await send(client, read.posting);

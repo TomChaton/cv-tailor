@@ -11,6 +11,7 @@ const OUTCOMES: CaptureOutcome[] = [
   'already-saved',
   'not-configured',
   'page-unreadable',
+  'page-blank',
   'unreachable',
   'token-rejected',
   'backend-error',
@@ -44,6 +45,17 @@ describe('what capture says', () => {
   it('has nothing to say about what is on a page', () => {
     expect(OUTCOMES).not.toContain('nothing-found');
     expect(catalogueKeys()).not.toContain('captureNothingFound');
+  });
+
+  /**
+   * A page that read as blank is the extension's own observation, and the only
+   * thing it says about a page. It is not the "nothing found" verdict: nothing
+   * is refused for being short, and nothing here asks whether the text is a job
+   * description.
+   */
+  it('says a page read as blank without judging what a page holds', () => {
+    expect(messageFor(messageKeyOf('page-blank'))).toBe('Page read as blank');
+    expect(worthRetrying('page-blank')).toBe(false);
   });
 
   it('counts only a posting the backend holds as landed', () => {
