@@ -5,6 +5,7 @@ namespace Tests\Feature\Generation;
 use App\Generation\PromptVersion;
 use App\Generation\QueuePostings;
 use App\MasterCv\MasterCvIsNotUsable;
+use App\Models\MasterCv;
 use App\Models\MasterCvVersion;
 use App\Models\Posting;
 use App\Models\Revision;
@@ -23,8 +24,6 @@ class QueuePostingsTest extends TestCase
     use MasterCvFixtures;
     use RefreshDatabase;
 
-    private string $cv = 'master-cv/minimal.md';
-
     public function test_a_captured_posting_gains_one_pending_revision_at_the_current_cv_version(): void
     {
         $posting = Posting::factory()->create();
@@ -35,7 +34,7 @@ class QueuePostingsTest extends TestCase
 
         $this->assertSame(1, $outcome->postings);
         $this->assertSame($version->id, $outcome->masterCvVersionId);
-        $this->assertSame($this->parseFixture($this->cv)->hash(), $version->hash);
+        $this->assertSame($this->parseFixture('master-cv/minimal.md')->hash(), $version->hash);
 
         $revision = Revision::query()->sole();
 
@@ -104,7 +103,7 @@ class QueuePostingsTest extends TestCase
      */
     public function test_a_master_cv_that_fails_lint_leaves_every_posting_captured(): void
     {
-        $this->cv = 'master-cv/broken-missing-id.md';
+        $this->storeMasterCv('master-cv/broken-missing-id.md');
 
         Posting::factory()->count(3)->create();
 
@@ -123,7 +122,7 @@ class QueuePostingsTest extends TestCase
 
     public function test_a_blocked_queue_warns_with_the_counts_and_never_the_findings(): void
     {
-        $this->cv = 'master-cv/broken-missing-id.md';
+        $this->storeMasterCv('master-cv/broken-missing-id.md');
 
         $log = Log::spy();
 
@@ -146,17 +145,19 @@ class QueuePostingsTest extends TestCase
         )->once();
     }
 
-    public function test_a_master_cv_that_cannot_be_read_blocks_the_queue_with_no_count_of_problems(): void
+    /**
+     * A fresh installation. Nothing is stored, so `queue()` is not used here:
+     * its default would store one.
+     */
+    public function test_no_master_cv_at_all_blocks_the_queue_with_no_count_of_problems(): void
     {
-        $this->cv = 'master-cv/nothing-here.md';
-
         $log = Log::spy();
 
         Posting::factory()->create();
 
         try {
-            $this->queue()->handle();
-            $this->fail('A master CV that cannot be read must block the queue.');
+            app(QueuePostings::class)->handle();
+            $this->fail('An installation with no master CV must block the queue.');
         } catch (MasterCvIsNotUsable $exception) {
             $this->assertNull($exception->problems);
         }
@@ -220,7 +221,7 @@ class QueuePostingsTest extends TestCase
      */
     public function test_nothing_waiting_reads_nothing_and_says_nothing(): void
     {
-        $this->cv = 'master-cv/broken-missing-id.md';
+        $this->storeMasterCv('master-cv/broken-missing-id.md');
 
         $log = Log::spy();
 
@@ -290,12 +291,15 @@ class QueuePostingsTest extends TestCase
     }
 
     /**
-     * Resolved per call, because the master CV path is read from the
-     * configuration as the dependency is built.
+     * The CV a case runs against is stored before the run, because that is
+     * where the run reads it from. The smallest CV that passes lint is the
+     * default, and a case wanting another stores it itself.
      */
     private function queue(): QueuePostings
     {
-        config(['cv.master_cv.path' => $this->fixturePath($this->cv)]);
+        if (MasterCv::query()->doesntExist()) {
+            $this->storeMasterCv('master-cv/minimal.md');
+        }
 
         return app(QueuePostings::class);
     }

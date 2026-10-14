@@ -4,6 +4,7 @@ namespace Tests\Feature\Console;
 
 use App\Observability\EventLogger;
 use Illuminate\Console\Command;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Mockery;
 use Mockery\MockInterface;
@@ -13,20 +14,14 @@ use Tests\TestCase;
 class CvLintCommandTest extends TestCase
 {
     use MasterCvFixtures;
+    use RefreshDatabase;
 
     public function test_it_passes_a_cv_that_is_fit_to_generate_from(): void
     {
-        $this->artisan('cv:lint', ['path' => $this->fixturePath()])
-            ->expectsOutputToContain('Nothing to fix.')
-            ->assertSuccessful();
-    }
-
-    public function test_it_defaults_to_the_configured_master_cv(): void
-    {
-        config(['cv.master_cv.path' => $this->fixturePath('master-cv/minimal.md')]);
+        $this->storeMasterCv();
 
         $this->artisan('cv:lint')
-            ->expectsOutputToContain('minimal.md')
+            ->expectsOutputToContain('Nothing to fix.')
             ->assertSuccessful();
     }
 
@@ -36,7 +31,9 @@ class CvLintCommandTest extends TestCase
      */
     public function test_it_fails_and_names_the_line_and_the_problem(): void
     {
-        $exitCode = Artisan::call('cv:lint', ['path' => $this->fixturePath('master-cv/broken-missing-id.md')]);
+        $this->storeMasterCv('master-cv/broken-missing-id.md');
+
+        $exitCode = Artisan::call('cv:lint');
         $output = Artisan::output();
 
         $this->assertSame(Command::FAILURE, $exitCode);
@@ -52,7 +49,9 @@ class CvLintCommandTest extends TestCase
      */
     public function test_it_offers_the_command_that_writes_the_missing_ids(): void
     {
-        Artisan::call('cv:lint', ['path' => $this->fixturePath('master-cv/broken-missing-id.md')]);
+        $this->storeMasterCv('master-cv/broken-missing-id.md');
+
+        Artisan::call('cv:lint');
 
         $this->assertStringContainsString(
             'Run "php artisan cv:id" to write the IDs that are missing.',
@@ -65,7 +64,9 @@ class CvLintCommandTest extends TestCase
      */
     public function test_its_output_is_written_for_the_cvs_author(): void
     {
-        Artisan::call('cv:lint', ['path' => $this->fixturePath('master-cv/broken-skill-names-no-role.md')]);
+        $this->storeMasterCv('master-cv/broken-skill-names-no-role.md');
+
+        Artisan::call('cv:lint');
         $output = Artisan::output();
 
         $this->assertStringContainsString(
@@ -78,6 +79,8 @@ class CvLintCommandTest extends TestCase
 
     public function test_a_failing_lint_is_logged_as_counts_and_never_as_content(): void
     {
+        $this->storeMasterCv('master-cv/broken-duplicate-id.md');
+
         /** @var EventLogger&MockInterface $logger */
         $logger = Mockery::mock(EventLogger::class);
         $logger->shouldReceive('warning')
@@ -91,14 +94,20 @@ class CvLintCommandTest extends TestCase
 
         $this->instance(EventLogger::class, $logger);
 
-        $this->artisan('cv:lint', ['path' => $this->fixturePath('master-cv/broken-duplicate-id.md')])
-            ->assertFailed();
+        $this->artisan('cv:lint')->assertFailed();
     }
 
-    public function test_it_says_so_plainly_when_there_is_no_cv_to_read(): void
+    /**
+     * A fresh installation has no CV, which is the ordinary first state. The
+     * command says what to do about it rather than reporting a missing file.
+     */
+    public function test_it_says_so_plainly_when_no_cv_is_stored(): void
     {
-        $this->artisan('cv:lint', ['path' => '/var/lib/cv-tailor/nothing-here.md'])
-            ->expectsOutputToContain('cannot be read')
-            ->assertFailed();
+        $this->assertSame(Command::FAILURE, Artisan::call('cv:lint'));
+
+        $output = Artisan::output();
+
+        $this->assertStringContainsString('No master CV is stored.', $output);
+        $this->assertStringContainsString('cv:import', $output);
     }
 }

@@ -21,21 +21,26 @@ use Symfony\Component\Console\Formatter\OutputFormatter;
  * A diff cannot show a CV that renders badly, clips a column or breaks a page
  * in the wrong place, and neither can a test: the only way to know is to read
  * one. This produces the longest document the template will ever be asked for
- * — every role, every bullet, every skill — from the CV on disk, with no model
+ * — every role, every bullet, every skill — from the stored CV, with no model
  * involved and nothing written to the database.
+ *
+ * `--cv` is the one path this command will read, and it is here for the
+ * fictional fixture: seeing what the template does to a CV that exercises
+ * every feature of the format must not mean replacing the CV somebody is
+ * editing.
  *
  * **It is not a way round the render guard.** The guard stands between a
  * *revision* and a PDF, because a revision carries model output. This carries
- * none: every word of it is the author's own, taken verbatim from their own
- * file. It is linted and run through the same validators all the same, and
- * refuses on a blocking finding exactly as the guard would, so the one way to
- * a PDF of someone else's words stays the one that is checked.
+ * none: every word of it is the author's own. It is linted and run through the
+ * same validators all the same, and refuses on a blocking finding exactly as
+ * the guard would, so the one way to a PDF of someone else's words stays the
+ * one that is checked.
  */
 class CvPreviewCommand extends Command
 {
     protected $signature = 'cv:preview
         {destination=/tmp/cv-preview.pdf : Where to write the PDF}
-        {--cv= : The master CV to read. Defaults to the configured one.}';
+        {--cv= : A Markdown file to render instead of the stored master CV}';
 
     protected $description = 'Render the whole master CV through the CV template, as a PDF.';
 
@@ -48,9 +53,18 @@ class CvPreviewCommand extends Command
         Filesystem $files,
     ): int {
         $destination = $this->stringArgument('destination') ?? '/tmp/cv-preview.pdf';
+        $path = $this->stringOption('cv');
 
         try {
-            [, $cv, $lint] = $read->handle($this->stringOption('cv'));
+            if ($path === null) {
+                [, $cv, $lint] = $read->handle();
+            } else {
+                if (! $files->isFile($path) || ! $files->isReadable($path)) {
+                    return $this->refuse(sprintf('%s cannot be read.', $path));
+                }
+
+                [$cv, $lint] = $read->parse($files->get($path));
+            }
         } catch (MasterCvIsNotUsable $exception) {
             return $this->refuse($exception->getMessage());
         }

@@ -10,7 +10,7 @@ use Illuminate\Console\Command;
 use Symfony\Component\Console\Formatter\OutputFormatter;
 
 /**
- * Tells the CV's author whether their file is fit to generate from.
+ * Tells the CV's author whether the stored CV is fit to generate from.
  *
  * The output is written for them and not for a developer: no class names, no
  * stack traces, no JSON, and a line number for everything. The exit code is
@@ -19,16 +19,14 @@ use Symfony\Component\Console\Formatter\OutputFormatter;
  */
 class CvLintCommand extends Command
 {
-    protected $signature = 'cv:lint {path? : The master CV to check. Defaults to the configured one.}';
+    protected $signature = 'cv:lint';
 
-    protected $description = 'Check a master CV before generating from it.';
+    protected $description = 'Check the master CV before generating from it.';
 
     public function handle(ReadMasterCv $read): int
     {
-        $path = $read->path($this->stringArgument('path'));
-
         try {
-            [, , $report] = $read->handle($path);
+            [, , $report] = $read->handle();
         } catch (MasterCvIsNotUsable $exception) {
             $this->newLine();
             $this->line('  <fg=red>'.OutputFormatter::escape($exception->getMessage()).'</>');
@@ -37,8 +35,6 @@ class CvLintCommand extends Command
             return self::FAILURE;
         }
 
-        $this->newLine();
-        $this->line('  <options=bold>'.OutputFormatter::escape($path).'</>');
         $this->newLine();
 
         foreach ($report->problems() as $problem) {
@@ -58,7 +54,7 @@ class CvLintCommand extends Command
             return self::SUCCESS;
         }
 
-        $read->logFailure($path, $report);
+        $read->logFailure($report);
 
         $this->line(sprintf(
             '  <fg=red>%s to fix before this CV can be generated from.</>',
@@ -100,12 +96,5 @@ class CvLintCommand extends Command
     private function plural(int $count, string $noun): string
     {
         return $count.' '.$noun.($count === 1 ? '' : 's');
-    }
-
-    private function stringArgument(string $name): ?string
-    {
-        $value = $this->argument($name);
-
-        return is_string($value) && $value !== '' ? $value : null;
     }
 }

@@ -23,9 +23,9 @@ use Illuminate\Support\Str;
  * wrong and tempt the author into "fixing" it — which would be the one change
  * that breaks the history.
  *
- * It never writes in place. The master CV is bind-mounted read-only by
- * deliberate decision, and this command does not become the reason to punch a
- * hole in that; the author reads a diff and adopts the result themselves.
+ * It never writes into the stored CV. Which of the IDs a tool proposes the
+ * author adopts is theirs to decide, so the whole document is handed back and
+ * they read a diff.
  */
 class AssignMasterCvIds
 {

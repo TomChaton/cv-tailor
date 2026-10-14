@@ -43,7 +43,14 @@ return [
             // its turn instead of failing.
             'busy_timeout' => 5000,
             'journal_mode' => 'wal',
-            'synchronous' => 'NORMAL',
+            // Every commit is fsynced. `NORMAL` fsyncs at checkpoints
+            // instead, so a host losing power can lose the last few writes -
+            // an acceptable trade for a captured posting, which can be
+            // captured again, and not for the master CV, which is the one
+            // thing in here nobody can regenerate. The cost is a slower write
+            // per commit, at a volume of a few dozen postings a day and one
+            // person editing a document.
+            'synchronous' => 'FULL',
             'transaction_mode' => 'DEFERRED',
         ],
 

@@ -14,16 +14,9 @@ return [
 
     'title' => 'Master CV',
 
-    'path' => 'Path',
-    'modified' => 'Modified',
+    'markdown' => 'Markdown',
+    'saved' => 'Saved',
     'version' => 'Version',
-
-    'unreadable' => [
-        'not_found' => 'Not found.',
-        'directory' => 'A directory, not a file.',
-        'not_regular_file' => 'Not a regular file.',
-        'not_readable' => 'Not readable.',
-    ],
 
     'counts' => [
         'roles' => 'Roles',
@@ -48,10 +41,12 @@ return [
     ],
 
     'actions' => [
-        'recheck' => 'Re-check',
+        'save' => 'Save',
+        'download' => 'Download',
         'add_ids' => 'Add missing IDs',
     ],
 
-    'download_filename' => 'master-cv-with-ids.md',
+    'download_filename' => 'master-cv.md',
+    'download_with_ids_filename' => 'master-cv-with-ids.md',
 
 ];

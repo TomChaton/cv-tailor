@@ -11,6 +11,13 @@ the review UI. Read the system briefing first; this one assumes it.
   `database` queue driver). One user and a few dozen jobs a day do not justify
   Postgres or Redis. Moving to Postgres later is a configuration change, so
   nothing may depend on SQLite-specific SQL.
+- **Every commit is fsynced** (`synchronous = FULL`), not only the
+  checkpoints. `NORMAL` lets a host that loses power lose the last few writes,
+  which is an acceptable trade for a captured posting — it can be captured
+  again — and not for the master CV, which the database now holds and nobody
+  can regenerate. The cost is a slower write per commit, and at a few dozen
+  postings a day plus one person editing a document it is not a cost worth
+  measuring.
 - **Filament** for the review UI. The UI is a tool for one person, not a
   product; Filament gives tables, filters, forms and custom pages with little
   code, and keeps the UI idiomatic Laravel.
@@ -30,9 +37,9 @@ the review UI. Read the system briefing first; this one assumes it.
 
 ### Authoring format
 
-The master CV is Markdown, authored by hand and kept by the owner outside the
-repository. It is not converted to YAML or JSON: it will be edited for years,
-and Markdown is the format people maintain. The application parses it.
+The master CV is Markdown, authored by hand and stored by the application. It
+is not converted to YAML or JSON: it will be edited for years, and Markdown is
+the format people maintain. The application parses it.
 
 The format is a documented convention, and the repository ships a fictional
 example that exercises all of it (`tests/Fixtures/master-cv.md`), which doubles
@@ -220,7 +227,7 @@ way, and the distinction is only worth counting.
 
 ### Linting
 
-`php artisan cv:lint` checks a master CV before it is used, and every
+`php artisan cv:lint` checks the stored master CV before it is used, and every
 generation run refuses a CV that fails it:
 
 - IDs present on every selectable unit, unique, and well-formed.
@@ -228,6 +235,13 @@ generation run refuses a CV that fails it:
   The author wrote the cell, so they meant something by it; a derived row names
   a real role by construction.
 - Recognised sections present.
+
+**A CV that fails lint still saves.** It is a draft, and refusing to store a
+CV with a problem in it would make that problem unfixable: fixing it needs the
+CV in front of its author with the problems beside it, which is exactly what a
+refusal withholds. The gate has not moved — generation refuses a CV that does
+not lint — so nothing a tailored CV could claim ever comes from a CV nobody
+has checked.
 
 A finding is a **problem** or a **note**, and only problems fail the lint.
 Notes are for what the author chose and the tool merely does not know: a
@@ -257,14 +271,16 @@ has no button; the master CV page, which has one, says nothing.
 
 ### Bootstrapping the IDs
 
-`php artisan cv:id <source> [destination]` writes the IDs a CV is missing and
+`php artisan cv:id [destination]` writes the IDs the stored CV is missing and
 emits the whole document, to a path or to standard output. It exists because no
 CV can be generated from until IDs exist, and a CV written before them has
 none.
 
-- **It never writes in place.** The master CV's mount is read-only by
-  deliberate decision, and this command is not the reason to undo that. The
-  author reads a diff and adopts the result themselves.
+- **It never writes into the stored CV.** Which of the IDs a tool proposes the
+  author adopts is theirs to decide, and a command that rewrote their document
+  would take the decision away. So it hands the whole document back and the
+  author reads a diff. The review UI's download is the same bargain for the
+  same reason.
 - **It is idempotent**, and preserves everything but the IDs it adds, so the
   diff the author reads contains nothing else.
 - **A role takes a slug of its employer; a bullet takes a number**, counted on
@@ -274,14 +290,23 @@ none.
 
 ### Versioning
 
-The CV file on disk is the editing surface; the database holds what was used.
-At each generation the parsed CV is hashed and stored in `master_cv_versions`
-(hash, raw content, parsed structure), deduplicated by hash. Every revision
-references the exact version it was generated from. This does not depend on
-the user keeping their CV in git.
+The stored CV is the editing surface; `master_cv_versions` holds what was
+used. At each generation the parsed CV is hashed and stored (hash, raw content,
+parsed structure), deduplicated by hash. Every revision references the exact
+version it was generated from.
 
-**The parse is hashed rather than the file**, so what identifies a version is
-what was used rather than the bytes it was read from. Line numbers are part of
+**The CV being edited and the versions that were used are different things, and
+a save is not a version.** Editing has to be free — somebody fixing a lint
+problem saves as often as they like — and a revision's link to the text that
+produced it has to be immutable. Only one of those can be true if a save
+writes a version: either the history fills with rows nobody asked for, or a
+version is rewritten under the revisions citing it. So **a generation is what
+makes a version**, which puts the only writer behind the gate that refuses a
+CV failing lint, and saving or merely looking at the CV records nothing at
+all.
+
+**The parse is hashed rather than the raw text**, so what identifies a version
+is what was used rather than the characters it was read from. Line numbers are part of
 the parse — lint and the review UI address facts by line — so a reflow produces
 a new version. Erring towards a new version costs a row and never misattributes
 a revision.
@@ -363,6 +388,11 @@ deliberately, and not to be made to agree.
     against the master CV), `validation_json` (findings), `pdf_path`.
   - `status`: `pending` | `submitted` | `generated` | `validated` | `ready` |
     `failed`; `attempts`; `error`.
+- **`master_cv`** — the Markdown its owner is editing, and when it was
+  last saved. **Singular, and one row**: this is single-tenant, so there is
+  one CV, and a plural name beside `master_cv_versions` would read as a
+  second collection of versions. Laravel pluralises a model's table by
+  default, so the model names its own.
 - **`master_cv_versions`** — as above.
 - **`llm_batches`** — provider batch ID, state, submitted/ended times, request
   count.
@@ -1176,27 +1206,32 @@ assembled from schema components, which carry the styles that exist.
 ### The master CV page
 
 The master CV is the part of the system its owner touches most, so it has a
-page: what the application makes of the file, every lint finding against it,
-and the two actions worth having.
+page: the Markdown in an editor, what the application makes of it, and every
+lint finding against it.
 
-- **It reports and offers; it does not author.** The CV is a Markdown file its
-  owner edits for years in an editor, and the mount is read-only by decision —
-  so "add missing IDs" hands back a corrected copy to **download**, exactly as
-  `cv:id` does, and the author reads a diff and adopts it themselves. A page
-  that wrote to the CV would be a second editing surface for a document that
-  already has one, and would cost the read-only mount.
-- **It re-reads on demand**, because the file changes outside the application:
-  the parse is made afresh on every request and never remembered, so a CV saved
-  in an editor is seen without a restart, and "re-check" is a button whose job
-  is to cause that read.
-- **Reporting on a CV is not generating from one.** The page's read applies the
-  same gate as generation — a CV that fails lint never becomes a
-  `master_cv_versions` row — so looking at a broken CV cannot leave behind
-  something a revision could claim it was built from.
-- **A file the application cannot read is an outcome, not an exception.** The
-  page names what is at the path, because a directory and a permissions problem
-  send its reader somewhere different, and `cv:status` answers that question
-  from the same place so the two surfaces cannot disagree.
+- **It is where the CV is written.** The CV is the one thing every owner has to
+  create and maintain, so it cannot be the one thing the application will not
+  touch. There is no second editing surface to keep in step: the record this
+  page writes is the record generation reads.
+- **The problems sit beside the editor, each with its line number.** The loop
+  that matters is seeing a problem and fixing it, and a loop that leaves the
+  page is a loop nobody closes.
+- **Saving re-lints, and a CV that fails lint still saves.** The reasoning is
+  with the linter, above. The page therefore never refuses a save and never
+  says a CV is unusable in its own words — the problems say that.
+- **A save records nothing.** No `master_cv_versions` row: a version is what a
+  generation used, and the reasoning is under Versioning.
+- **A fresh installation shows an empty editor and nothing else.** No CV is the
+  ordinary first state rather than a fault, and an empty state that explains
+  itself is a sentence nobody needed.
+- **The downloads are the page's one concession to a file.** "Download" hands
+  back exactly what was saved, because moving the CV into the application
+  costs its owner `git` and their own editor and an export is what gives those
+  back; "add missing IDs" hands back a corrected copy for the reason `cv:id`
+  does. Neither writes to the stored CV.
+- **Anything an action changes is passed to the schema as a closure.** See
+  Things that are easy to get wrong: a page's content schema is assembled
+  before its actions run.
 - **Lint's own findings are the exception to the catalogue rule.** They are
   written for the CV's author and come from the linter; the page prints them as
   it is given them, and supplies only the heading of the check that raised each
@@ -1296,11 +1331,12 @@ toolchain:
 | Create or update the owner | `docker compose exec app php artisan cv:owner` |
 | Issue an extension token | `docker compose exec app php artisan cv:token` |
 | Check the master CV | `docker compose exec app php artisan cv:lint` |
+| Import a master CV from a file | `docker compose exec app php artisan cv:import /tmp/master-cv.md` |
 | Queue captured postings for generation | `docker compose exec app php artisan cv:queue` |
 | Submit every pending revision as one batch | `docker compose exec app php artisan cv:batch-submit` |
 | Collect the results of every finished batch | `docker compose exec app php artisan cv:batch-poll` |
 | Arm the submitter again after it halted itself | `docker compose exec app php artisan cv:batch-resume` |
-| Add the IDs a master CV is missing | `docker compose exec app php artisan cv:id /var/lib/cv-tailor/master-cv.md > master-cv-with-ids.md` |
+| Add the IDs the master CV is missing | `docker compose exec app php artisan cv:id > master-cv-with-ids.md` |
 | See the master CV through the CV template | `docker compose exec app php artisan cv:preview /tmp/cv-preview.pdf` |
 
 `cv:owner` prompts, and takes `--name`, `--email` and `--password` when a
@@ -1310,13 +1346,22 @@ script needs it. `cv:token` prints the token once; only its hash is stored.
 when somebody wants the answer now. `cv:batch-resume` is the only way to clear
 a halted submitter, and `cv:status` is where the halt is visible.
 
-`cv:lint` checks the mounted CV, and takes a path when another file is wanted.
-`cv:id` reads the mounted CV and writes elsewhere — standard output above, or a
-path given as a second argument; the mount is read-only, so there is nowhere
-inside the container to write it but `/tmp`. `cv:preview` is the same: it reads
-the mounted CV, takes `--cv` for another file, and writes the PDF where it is
-told, which has to be somewhere writable. `docker compose cp` brings it out to
-be read.
+`cv:lint` and `cv:id` act on the stored CV and take no path at all. `cv:id`
+writes to standard output, as above, or to a path given as its one argument.
+
+`cv:import` is the one thing in the system that reads a master CV from a path,
+and it is run once: `docker compose cp` puts the file inside the container
+first. It refuses to replace a CV that is already stored unless passed
+`--force`, because the stored one may be the edited one and a file on disk is
+no evidence that it is not. An import is a save like any other, so a CV with
+problems in it still lands — the command says how many, and the page is where
+they are fixed.
+
+`cv:preview` renders the stored CV and keeps `--cv` for a file, which is the
+one place a path is still worth having: seeing what the template does to the
+fictional fixture must not mean replacing the CV somebody is editing. The PDF
+goes where it is told, which has to be somewhere writable, and
+`docker compose cp` brings it out to be read.
 
 ### Things that are easy to get wrong
 
@@ -1326,6 +1371,12 @@ be read.
 - **Configuration is never cached.** It arrives as container environment
   variables, and a cached config file would freeze whatever happened to be set
   when the image was built.
+- **A page's content schema is assembled before its actions run.** Filament
+  caches a schema for the request, and a header action fires between the
+  assembly and the render. A component built eagerly from a value the action
+  changes therefore renders the value from before it, and the page looks as
+  though the action did nothing. Anything on a page that an action alters is
+  passed as a closure, which is evaluated at render time.
 - **A route memoises the controller it resolved**, and a route lives as long as
   the application does. So a test that swaps a binding *between* two requests
   is served the second time by the instance the first request built, and the

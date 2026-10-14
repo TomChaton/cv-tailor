@@ -7,9 +7,9 @@ use Illuminate\Filesystem\Filesystem;
 /**
  * A directory of this test's own, thrown away afterwards.
  *
- * For the cases that need a file somewhere writable: a master CV that is not
- * there, one that is a directory, one that changes between two reads. None of
- * those can be a fixture, because what each is about is what the file is not.
+ * For the cases that write a file rather than read one, and for the ones about
+ * a path that holds nothing, or the wrong thing. Neither can be a fixture:
+ * what a fixture is is a file that is there.
  */
 trait TemporaryFiles
 {

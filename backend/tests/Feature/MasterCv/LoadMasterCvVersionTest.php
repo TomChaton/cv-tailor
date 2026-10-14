@@ -4,6 +4,8 @@ namespace Tests\Feature\MasterCv;
 
 use App\MasterCv\LoadMasterCvVersion;
 use App\MasterCv\MasterCvIsNotUsable;
+use App\MasterCv\SaveMasterCv;
+use App\Models\Revision;
 use App\Observability\EventLogger;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery;
@@ -18,7 +20,9 @@ class LoadMasterCvVersionTest extends TestCase
 
     public function test_it_stores_the_parsed_cv_as_the_version_a_revision_can_point_at(): void
     {
-        $version = $this->load()->handle($this->fixturePath());
+        $this->storeMasterCv();
+
+        $version = $this->load()->handle();
 
         $this->assertSame($this->parseFixture()->hash(), $version->hash);
         $this->assertSame($this->fixture(), $version->raw_content);
@@ -28,15 +32,44 @@ class LoadMasterCvVersionTest extends TestCase
 
     public function test_an_unchanged_cv_reuses_the_version_already_stored(): void
     {
-        $first = $this->load()->handle($this->fixturePath());
-        $second = $this->load()->handle($this->fixturePath());
+        $this->storeMasterCv();
+
+        $first = $this->load()->handle();
+        $second = $this->load()->handle();
 
         $this->assertSame($first->id, $second->id);
         $this->assertDatabaseCount('master_cv_versions', 1);
     }
 
+    /**
+     * What a revision points at is the text it was generated from, and
+     * editing the CV afterwards cannot reach back and change it. This is why
+     * the CV being edited and the versions that were used are separate
+     * things.
+     */
+    public function test_a_revision_generated_before_an_edit_still_resolves_against_the_version_it_used(): void
+    {
+        $this->storeMasterCv();
+
+        $used = $this->load()->handle();
+        $revision = Revision::factory()->for($used)->create();
+
+        app(SaveMasterCv::class)->handle($this->fixture('master-cv/minimal.md'));
+
+        $this->assertSame($used->id, $revision->refresh()->master_cv_version_id);
+        $this->assertSame($this->fixture(), $revision->masterCvVersion?->raw_content);
+
+        $now = $this->load()->handle();
+
+        $this->assertNotSame($used->id, $now->id);
+        $this->assertSame($this->fixture('master-cv/minimal.md'), $now->raw_content);
+        $this->assertDatabaseCount('master_cv_versions', 2);
+    }
+
     public function test_it_logs_what_it_parsed_as_counts(): void
     {
+        $this->storeMasterCv();
+
         /** @var EventLogger&MockInterface $logger */
         $logger = Mockery::mock(EventLogger::class);
         $logger->shouldReceive('log')
@@ -57,7 +90,7 @@ class LoadMasterCvVersionTest extends TestCase
 
         $this->instance(EventLogger::class, $logger);
 
-        $this->load()->handle($this->fixturePath());
+        $this->load()->handle();
     }
 
     /**
@@ -66,29 +99,22 @@ class LoadMasterCvVersionTest extends TestCase
      */
     public function test_it_refuses_a_cv_that_fails_lint(): void
     {
+        $this->storeMasterCv('master-cv/broken-missing-id.md');
+
         $this->expectException(MasterCvIsNotUsable::class);
 
         try {
-            $this->load()->handle($this->fixturePath('master-cv/broken-missing-id.md'));
+            $this->load()->handle();
         } finally {
             $this->assertDatabaseCount('master_cv_versions', 0);
         }
     }
 
-    public function test_it_refuses_a_cv_it_cannot_read(): void
+    public function test_it_refuses_an_installation_with_no_cv_stored(): void
     {
         $this->expectException(MasterCvIsNotUsable::class);
 
-        $this->load()->handle('/var/lib/cv-tailor/nothing-here.md');
-    }
-
-    public function test_it_reads_the_configured_cv_when_given_no_path(): void
-    {
-        config(['cv.master_cv.path' => $this->fixturePath('master-cv/minimal.md')]);
-
-        $version = $this->load()->handle();
-
-        $this->assertSame($this->fixture('master-cv/minimal.md'), $version->raw_content);
+        $this->load()->handle();
     }
 
     private function load(): LoadMasterCvVersion
