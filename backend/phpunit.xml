@@ -25,6 +25,14 @@
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>
+        <!-- Pinned empty so the suite never reads the credentials a developer
+             has put in `.env` for their own stack: Dotenv does not overwrite a
+             variable that is already set, and a test that asserts what seeding
+             does with nothing would otherwise depend on this machine. -->
+        <env name="CV_OWNER_NAME" value=""/>
+        <env name="CV_OWNER_EMAIL" value=""/>
+        <env name="CV_OWNER_PASSWORD" value=""/>
+        <env name="CV_EXTENSION_TOKEN" value=""/>
         <env name="LOG_CHANNEL" value="null"/>
         <env name="DB_CONNECTION" value="sqlite"/>
         <env name="DB_DATABASE" value=":memory:"/>

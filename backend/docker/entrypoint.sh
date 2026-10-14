@@ -9,8 +9,14 @@ if [ -n "${DB_DATABASE}" ] && [ ! -f "${DB_DATABASE}" ]; then
 fi
 
 # Only one role migrates, so three containers starting together cannot race.
+# Seeding writes rows too, so it belongs to the same single role, after the
+# tables it writes to exist.
+#
+# No credential is named here. The command reads the environment itself and
+# reports through the log, so this shell has nothing it could echo.
 if [ "${CV_RUN_MIGRATIONS}" = "true" ]; then
     php artisan migrate --force --no-interaction
+    php artisan cv:seed-credentials --no-interaction
 fi
 
 exec docker-php-entrypoint "$@"
