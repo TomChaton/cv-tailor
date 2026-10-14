@@ -65,6 +65,15 @@ build.
   hidden parts dropped.
 - **`aria-hidden` does not count as hidden.** It hides an element from
   assistive technology, not from the person looking at the page.
+- **Content a page never renders is not hidden text.** `script`, `style`,
+  `noscript` and `template` hold source, not words somebody was kept from
+  seeing, so they are neither read nor counted. The user-agent stylesheet puts
+  `display: none` on them, so counting by what is hidden counts a page's own
+  markup — and the warning is worth drawing only while it is rare. Set on every
+  capture it is a warning the owner learns to ignore, which spends the one
+  signal that says a listing is talking to the model. The decision is made on
+  the element and never on its computed display, so no stylesheet turns markup
+  into a warning or a warning into markup.
 - **An element that lays out no box of its own is not hidden.** A browser
   answers the visibility question about boxes and reports a box-less element as
   not visible, but `display: contents` removes only the box: the children drawn
@@ -126,8 +135,9 @@ reading those from storage is the options page's job.
   configured, a page it may not read, a page that read as blank, or what the
   backend said. There is no "nothing found on the page": whether a page holds a
   job description is the backend's judgement, and a blank read answers a
-  different question — whether there was anything to send at all. A second line appears only while the capture is still
-  waiting to be sent, and a way into the settings only when there are none.
+  different question — whether there was anything to send at all. A second line
+  appears only while the capture is still waiting to be sent, and a way into the
+  settings only when there are none.
 - **The badge shows what is outstanding.** A count while captures wait to be
   sent, because that is the one thing the owner cannot find out any other way;
   with nothing waiting, a mark for the last capture — one for landed, one for
@@ -200,7 +210,13 @@ reading those from storage is the options page's job.
   job's words are not ours to publish and a real page carries the owner's
   profile all through it. A fixture written by hand holds only the hiding
   techniques whoever wrote it thought of, and the ones that break a reader are
-  the ones nobody thought of.
+  the ones nobody thought of. It keeps the board's own inline script and rules
+  for the same reason: a page carries its own markup, and a fixture with none
+  cannot show that markup is left out of what a page is said to hide.
+- **A hidden-character count a fixture asserts is pinned part by part.** A
+  total says only that something was counted, and the point of the count is
+  which things it is made of: take one of them out of the fixture and the count
+  drops by that much, take the markup out and it does not move.
 - **The tests run against a DOM implementation, not a browser.** It answers
   `checkVisibility` and `getComputedStyle`, which is what visibility is decided
   with, so a hiding technique can be proved excluded without driving Chrome.
