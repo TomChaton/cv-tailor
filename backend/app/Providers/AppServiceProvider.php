@@ -8,10 +8,8 @@ use App\Batching\PollBatches;
 use App\Generation\BuildGenerationRequest;
 use App\Http\Middleware\LimitRequestBody;
 use App\Http\TrustedProxies;
-use App\MasterCv\ReadMasterCv;
 use App\Observability\Listeners\RecordWorkerHeartbeat;
 use App\Observability\Status\LlmSection;
-use App\Observability\Status\MasterCvSection;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Queue\Events\Looping;
@@ -47,12 +45,8 @@ class AppServiceProvider extends ServiceProvider
         // uses.
         $this->app->bind(BatchRequestBuilder::class, BuildGenerationRequest::class);
 
-        // Contextual binding: these classes want the master CV path, and the
+        // Contextual binding: a class wants one configured value, and the
         // alternative is a config lookup buried inside domain code.
-        $this->app->when([MasterCvSection::class, ReadMasterCv::class])
-            ->needs('$path')
-            ->give(fn (): string => Config::string('cv.master_cv.path'));
-
         $this->app->when(BuildGenerationRequest::class)
             ->needs('$maxTokens')
             ->give(fn (): int => Config::integer('cv.llm.max_output_tokens.generation'));

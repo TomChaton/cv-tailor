@@ -11,8 +11,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 /**
  * The parsed master CV a revision was generated from.
  *
- * The file on disk is the editing surface; this is what was used. Rows are
- * deduplicated by `hash`, so an unchanged CV is not stored twice.
+ * `MasterCv` is the editing surface; this is what was used. The two are
+ * separate so that saving can be free and unversioned while a revision's link
+ * to the text that produced it stays immutable.
+ *
+ * Rows are deduplicated by `hash`, so an unchanged CV is not stored twice, and
+ * a generation is the only thing that writes one.
  *
  * @property-read int $id
  * @property-read string $hash

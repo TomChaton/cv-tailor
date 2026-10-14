@@ -17,7 +17,7 @@ class CvQueueCommandTest extends TestCase
 
     public function test_it_reports_what_it_queued(): void
     {
-        config(['cv.master_cv.path' => $this->fixturePath('master-cv/minimal.md')]);
+        $this->storeMasterCv('master-cv/minimal.md');
 
         Posting::factory()->count(2)->create();
 
@@ -30,7 +30,7 @@ class CvQueueCommandTest extends TestCase
 
     public function test_it_reports_a_single_posting_as_one(): void
     {
-        config(['cv.master_cv.path' => $this->fixturePath('master-cv/minimal.md')]);
+        $this->storeMasterCv('master-cv/minimal.md');
 
         Posting::factory()->create();
 
@@ -52,7 +52,7 @@ class CvQueueCommandTest extends TestCase
      */
     public function test_it_fails_when_the_master_cv_cannot_be_used(): void
     {
-        config(['cv.master_cv.path' => $this->fixturePath('master-cv/broken-duplicate-id.md')]);
+        $this->storeMasterCv('master-cv/broken-duplicate-id.md');
 
         Posting::factory()->create();
 
@@ -85,7 +85,7 @@ class CvQueueCommandTest extends TestCase
 
     public function test_the_scheduled_run_queues_what_is_waiting(): void
     {
-        config(['cv.master_cv.path' => $this->fixturePath('master-cv/minimal.md')]);
+        $this->storeMasterCv('master-cv/minimal.md');
 
         Posting::factory()->create();
 
@@ -102,7 +102,7 @@ class CvQueueCommandTest extends TestCase
      */
     public function test_the_scheduled_run_leaves_everything_waiting_when_the_master_cv_cannot_be_used(): void
     {
-        config(['cv.master_cv.path' => $this->fixturePath('master-cv/broken-duplicate-id.md')]);
+        $this->storeMasterCv('master-cv/broken-duplicate-id.md');
 
         Posting::factory()->create();
 

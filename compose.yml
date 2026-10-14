@@ -12,16 +12,6 @@ x-app: &app
   volumes:
     - database:/var/lib/cv-tailor/db
     - pdfs:/var/lib/cv-tailor/pdfs
-    # Long form for `create_host_path: false`: without it Docker invents an
-    # empty directory when the source is not there, and a wrong path then looks
-    # from inside the container like a master CV that happens to be empty. The
-    # `:?` guard catches an unset variable; this catches a set but wrong one.
-    - type: bind
-      source: ${MASTER_CV_HOST_PATH:?set MASTER_CV_HOST_PATH in .env}
-      target: /var/lib/cv-tailor/master-cv.md
-      read_only: true
-      bind:
-        create_host_path: false
 
 services:
   app:

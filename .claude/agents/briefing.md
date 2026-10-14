@@ -66,14 +66,14 @@ reached over Tailscale; nothing in the application depends on that.
 - **State lives in named volumes** — the SQLite database and generated PDFs —
   never bind mounts. On macOS, bind mounts go through the Docker VM's file
   sharing, which is slow and does not give SQLite reliable locking.
-- **The master CV is bind-mounted read-only.** It is authored on the host, and
-  the application only ever reads it.
-- **The master CV lives under the owner's home directory.** That is where a
-  person keeps a document they edit by hand, and it is the one place a
-  VM-backed Docker shares by default: a bind mount whose source sits outside
-  what the VM shares is reported as missing, however plainly it exists on the
-  host. So the configured path is a home-relative one, and `.env.example`
-  defaults to it.
+- **The master CV is stored by the application, not mounted.** It is the one
+  thing every user has to create and maintain, and as a file on the host it
+  was the one thing the application could not help with: editing meant leaving
+  for a line number the UI had reported and changing it in another program,
+  and a new installation could do nothing at all until somebody had got a file
+  onto the host. So the CV is a record in the database, written and corrected
+  where its problems are reported, and a path reaches it only once — through
+  `cv:import`, for somebody who already has one.
 
 ### Routing is a deployment overlay
 
@@ -181,6 +181,12 @@ consistent SQLite snapshot (`sqlite3 .backup`, never a file copy of a live
 database) plus the PDFs, written to a host directory configured by
 environment variable. Off-host copies are the host's job (e.g. Time Machine).
 
+**The database holds the master CV, which is the one piece of state nobody can
+regenerate.** A captured posting can be captured again and a revision can be
+generated again; a CV its author has spent years on cannot. That is what the
+backup is for, and it is also why the database fsyncs on every commit rather
+than at checkpoints — see the backend briefing.
+
 ## Repository layout
 
 ```
@@ -200,14 +206,8 @@ All of these run from the repository root.
 
 ### First run, in this order
 
-1. `cp .env.example .env`, then point `MASTER_CV_HOST_PATH` at a master CV
-   that **already exists, under your home directory** — that is what the Docker
-   VM shares, and a path outside it fails as a missing source even when it is
-   there on the host. The default uses `${HOME}`, which Compose interpolates
-   from within `.env`. Compose reads `.env` for its own interpolation as well
-   as for the containers' environment, so nothing starts without it, and the
-   bind mount refuses to invent a missing source rather than quietly presenting
-   an empty directory as the CV.
+1. `cp .env.example .env`. Compose reads `.env` for its own interpolation as
+   well as for the containers' environment, so nothing starts without it.
 2. `docker compose run --rm toolchain composer install`. Nothing else that
    calls artisan works before this: `vendor/` is not in the repository and the
    toolchain image deliberately carries no source of its own.
@@ -217,6 +217,12 @@ All of these run from the repository root.
 5. `docker compose exec app php artisan cv:owner` to create the account the
    review UI is entered with, then
    `docker compose exec app php artisan cv:token` for the extension's token.
+6. The master CV. Write or paste it on the Master CV page in the review UI.
+   Somebody who already has one as a file copies it in and imports it:
+   `docker compose cp master-cv.md app:/tmp/master-cv.md`, then
+   `docker compose exec app php artisan cv:import /tmp/master-cv.md`. Nothing
+   is generated until there is one, and `php artisan cv:status` says whether
+   there is.
 
 ### Afterwards
 

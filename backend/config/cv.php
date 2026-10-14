@@ -10,11 +10,6 @@ use App\Observability\Status\RevisionsSection;
 
 return [
 
-    'master_cv' => [
-        // A read-only bind mount. The application only ever reads it.
-        'path' => env('MASTER_CV_PATH', '/var/lib/cv-tailor/master-cv.md'),
-    ],
-
     // The application listens on plain HTTP and knows nothing about how traffic
     // reaches it, so the trusted set is deployment configuration. Empty trusts
     // no proxy; `*` trusts any. Authentication never relies on a proxy: see the

@@ -4,62 +4,79 @@ namespace App\MasterCv;
 
 use App\MasterCv\Lint\LintReport;
 use App\MasterCv\Lint\MasterCvLinter;
+use App\Models\MasterCv;
 use App\Observability\EventLogger;
-use Illuminate\Filesystem\Filesystem;
 
 /**
- * Reads a master CV from disk, parses it and lints it.
+ * Reads the stored master CV, parses it and lints it.
  *
- * The one place that turns a path into a parse, so that `cv:lint`, `cv:status`
- * and generation all agree on what the file says and on whether it is fit to
- * be used.
+ * The one place that turns Markdown into a parse and a verdict, so that
+ * `cv:lint`, `cv:status`, the review UI and generation all agree on what the
+ * CV says and on whether it is fit to be used.
  */
 class ReadMasterCv
 {
     public function __construct(
-        private readonly Filesystem $files,
         private readonly MasterCvParser $parser,
         private readonly MasterCvLinter $linter,
         private readonly EventLogger $log,
-        private readonly string $path,
     ) {}
 
-    public function path(?string $path = null): string
+    /**
+     * The stored CV, or nothing at all.
+     *
+     * A fresh installation has none, which is the ordinary first state rather
+     * than a fault: the owner has not written one yet.
+     */
+    public function stored(): ?MasterCv
     {
-        return $path ?? $this->path;
+        return MasterCv::query()->first();
     }
 
     /**
-     * @return array{0: string, 1: ParsedMasterCv, 2: LintReport} The raw file,
+     * @return array{0: string, 1: ParsedMasterCv, 2: LintReport} The Markdown,
      *                                                            the parse and
      *                                                            the lint.
+     *
+     * @throws MasterCvIsNotUsable When nothing is stored.
      */
-    public function handle(?string $path = null): array
+    public function handle(): array
     {
-        $path = $this->path($path);
+        $markdown = $this->stored()?->markdown;
 
-        if (! $this->files->isFile($path) || ! $this->files->isReadable($path)) {
-            throw MasterCvIsNotUsable::unreadable($path);
+        if ($markdown === null) {
+            throw MasterCvIsNotUsable::notStored();
         }
 
-        $raw = $this->files->get($path);
-        $parsed = $this->parser->parse($raw);
-
-        return [$raw, $parsed, $this->linter->lint($parsed)];
+        return [$markdown, ...$this->parse($markdown)];
     }
 
     /**
-     * A failed lint is a warning rather than an error: the file is the
-     * author's to fix, and the process that found it carries on.
+     * Markdown the caller already holds, read as a master CV.
+     *
+     * What a save has in its hands, and what `cv:preview` has when it is
+     * pointed at a fixture.
+     *
+     * @return array{0: ParsedMasterCv, 1: LintReport}
+     */
+    public function parse(string $markdown): array
+    {
+        $parsed = $this->parser->parse($markdown);
+
+        return [$parsed, $this->linter->lint($parsed)];
+    }
+
+    /**
+     * A failed lint is a warning rather than an error: the CV is the author's
+     * to fix, and the process that found it carries on.
      *
      * The counts go to the log and the findings do not. A finding quotes the
      * CV, and a log line that would be embarrassing in a public bug report is
      * a bug.
      */
-    public function logFailure(string $path, LintReport $report): void
+    public function logFailure(LintReport $report): void
     {
         $this->log->warning('master_cv.lint_failed', [
-            'path' => $path,
             'problems' => count($report->problems()),
             'by_check' => $report->problemsByCheck(),
         ]);

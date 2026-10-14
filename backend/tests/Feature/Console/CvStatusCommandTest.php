@@ -53,85 +53,33 @@ class CvStatusCommandTest extends TestCase
             ->assertSuccessful();
     }
 
-    public function test_it_reports_a_readable_master_cv(): void
-    {
-        $path = tempnam(sys_get_temp_dir(), 'master-cv');
-        $this->assertIsString($path);
-        file_put_contents($path, "# Fictional Person\n");
-        config(['cv.master_cv.path' => $path]);
-
-        $this->artisan('cv:status')
-            ->expectsOutputToContain('Master CV')
-            ->expectsOutputToContain(basename($path))
-            ->expectsOutputToContain('readable')
-            ->expectsOutputToContain('modified')
-            ->assertSuccessful();
-
-        unlink($path);
-    }
-
-    public function test_it_reports_a_master_cv_that_is_not_there(): void
-    {
-        config(['cv.master_cv.path' => '/var/lib/cv-tailor/nothing-here.md']);
-
-        $this->artisan('cv:status')
-            ->expectsOutputToContain('nothing-here.md')
-            ->expectsOutputToContain('not found')
-            ->doesntExpectOutputToContain('modified')
-            ->assertSuccessful();
-    }
-
     /**
-     * Docker creates an empty directory when a bind mount's source is missing,
-     * so a wrong `MASTER_CV_HOST_PATH` arrives in the container looking like
-     * this. It must not read as a present, readable CV.
+     * A fresh installation has no CV. That is the normal first state now, not
+     * an error, so it reads as one - and it names the two ways out.
      */
-    public function test_it_reports_a_directory_as_a_directory(): void
+    public function test_it_reports_an_installation_with_no_master_cv(): void
     {
-        $path = sys_get_temp_dir().'/master-cv-'.bin2hex(random_bytes(6));
-        mkdir($path);
-        config(['cv.master_cv.path' => $path]);
+        $this->assertSame(Command::SUCCESS, Artisan::call('cv:status'));
 
-        $this->artisan('cv:status')
-            ->expectsOutputToContain('a directory, not a file')
-            ->doesntExpectOutputToContain('modified')
-            ->assertSuccessful();
+        $output = Artisan::output();
 
-        rmdir($path);
+        $this->assertStringContainsString('Master CV', $output);
+        $this->assertStringContainsString('stored', $output);
+        $this->assertStringContainsString('cv:import', $output);
+        $this->assertStringNotContainsString('saved', $output);
     }
 
-    public function test_it_reports_a_master_cv_it_may_not_read(): void
+    public function test_it_reports_when_the_master_cv_was_saved_and_what_it_parses_to(): void
     {
-        $path = tempnam(sys_get_temp_dir(), 'master-cv');
-        $this->assertIsString($path);
-        file_put_contents($path, "# Fictional Person\n");
-        chmod($path, 0o000);
-
-        if (is_readable($path)) {
-            // Tests run as root in some containers, where a mode of 000 still
-            // reads. Nothing to assert there.
-            unlink($path);
-            $this->markTestSkipped('This user can read a file with no permissions.');
-        }
-
-        config(['cv.master_cv.path' => $path]);
-
-        $this->artisan('cv:status')
-            ->expectsOutputToContain('not readable')
-            ->doesntExpectOutputToContain('modified')
-            ->assertSuccessful();
-
-        unlink($path);
-    }
-
-    public function test_it_reports_the_version_the_master_cv_parses_to_and_that_it_passes_lint(): void
-    {
-        config(['cv.master_cv.path' => $this->fixturePath()]);
+        $this->storeMasterCv();
 
         $this->assertSame(Command::SUCCESS, Artisan::call('cv:status'));
 
         $output = Artisan::output();
 
+        $this->assertStringContainsString('Master CV', $output);
+        $this->assertStringContainsString('stored', $output);
+        $this->assertStringContainsString('saved', $output);
         $this->assertStringContainsString('version', $output);
         $this->assertStringContainsString($this->parseFixture()->hash(), $output);
         $this->assertStringContainsString('passing', $output);
@@ -139,7 +87,7 @@ class CvStatusCommandTest extends TestCase
 
     public function test_it_reports_a_master_cv_that_would_be_refused(): void
     {
-        config(['cv.master_cv.path' => $this->fixturePath('master-cv/broken-missing-id.md')]);
+        $this->storeMasterCv('master-cv/broken-missing-id.md');
 
         $this->assertSame(Command::SUCCESS, Artisan::call('cv:status'));
 

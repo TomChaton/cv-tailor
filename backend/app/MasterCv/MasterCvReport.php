@@ -8,14 +8,14 @@ use App\MasterCv\Lint\LintReport;
 use Carbon\CarbonImmutable;
 
 /**
- * What the application makes of the master CV at one moment.
+ * What the application makes of the stored master CV.
  *
- * It is assembled fresh each time it is asked for, never stored: the file is
- * edited outside the application, so a remembered answer is a stale one.
+ * It is assembled fresh each time it is asked for and never kept, so a page
+ * that is rendered twice reports the CV as it stands twice.
  *
- * A CV that could not be read has a state and nothing else. Reporting it as a
- * parse with no facts in it would be indistinguishable from an empty CV, and
- * the two want different things doing about them.
+ * A CV that has never been saved has nothing to report but that. Reporting it
+ * as a parse with no facts in it would be indistinguishable from a CV its
+ * author had emptied, and the two want different things doing about them.
  */
 final readonly class MasterCvReport
 {
@@ -23,41 +23,39 @@ final readonly class MasterCvReport
      * @param  array<string, int>|null  $counts
      */
     private function __construct(
-        public string $path,
-        public MasterCvState $state,
-        public ?CarbonImmutable $modified = null,
+        public bool $stored,
+        public string $markdown = '',
+        public ?CarbonImmutable $saved = null,
         public ?string $version = null,
         public ?array $counts = null,
         public ?LintReport $lint = null,
         public ?IdAssignment $ids = null,
     ) {}
 
-    public static function unreadable(string $path, MasterCvState $state): self
+    /**
+     * A fresh installation. The ordinary first state, not a fault.
+     */
+    public static function none(): self
     {
-        return new self($path, $state);
+        return new self(false);
     }
 
     public static function of(
-        string $path,
-        CarbonImmutable $modified,
+        string $markdown,
+        CarbonImmutable $saved,
         ParsedMasterCv $parsed,
         LintReport $lint,
         IdAssignment $ids,
     ): self {
         return new self(
-            $path,
-            MasterCvState::Readable,
-            $modified,
+            true,
+            $markdown,
+            $saved,
             $parsed->hash(),
             $parsed->counts(),
             $lint,
             $ids,
         );
-    }
-
-    public function wasRead(): bool
-    {
-        return $this->lint !== null;
     }
 
     public function passes(): bool
@@ -68,7 +66,7 @@ final readonly class MasterCvReport
     /**
      * Problems under the name of the check that raised them.
      *
-     * Grouped because the checks ask different questions of the file, and a
+     * Grouped because the checks ask different questions of the CV, and a
      * list that interleaves them reads as one long complaint. Within a group
      * the order is the report's, which is by line.
      *

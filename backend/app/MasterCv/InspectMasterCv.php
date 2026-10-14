@@ -3,62 +3,52 @@
 namespace App\MasterCv;
 
 use App\MasterCv\Ids\AssignMasterCvIds;
-use Carbon\CarbonImmutable;
-use Illuminate\Filesystem\Filesystem;
+use App\Models\MasterCv;
 
 /**
- * Reads the master CV and says what the application makes of it.
+ * Says what the application makes of the stored master CV.
  *
- * `LoadMasterCvVersion` asks the same questions in order to refuse: generation
- * either gets a usable CV or stops. This answers them in order to report, so a
- * CV that cannot be read or does not pass lint is an outcome rather than an
- * exception — the author is the one who has to see it.
+ * `LoadMasterCvVersion` asks the same questions in order to refuse:
+ * generation either gets a usable CV or stops. This answers them in order to
+ * report, so a CV that has never been saved, or does not pass lint, is an
+ * outcome rather than an exception — the author is the one who has to see it.
  *
- * It applies the same gate: a CV that fails lint never becomes a version, so
- * no revision can reference one. Reporting on a file is never a reason to
- * record it as something a CV could be generated from.
+ * **It records nothing.** A `master_cv_versions` row is what a generation made
+ * of the CV, and only a generation may write one: looking at the CV, or
+ * saving it, must leave behind nothing a revision could claim it was built
+ * from.
  */
 class InspectMasterCv
 {
     public function __construct(
-        private readonly Filesystem $files,
         private readonly ReadMasterCv $read,
-        private readonly StoreMasterCvVersion $store,
         private readonly AssignMasterCvIds $assign,
     ) {}
 
-    public function handle(?string $path = null): MasterCvReport
+    public function handle(): MasterCvReport
     {
-        $path = $this->read->path($path);
-        $state = MasterCvState::at($this->files, $path);
+        $stored = $this->read->stored();
 
-        if ($state !== MasterCvState::Readable) {
-            return MasterCvReport::unreadable($path, $state);
-        }
+        return $stored === null ? MasterCvReport::none() : $this->of($stored);
+    }
 
-        [$raw, $parsed, $lint] = $this->read->handle($path);
+    public function of(MasterCv $cv): MasterCvReport
+    {
+        [$parsed, $lint] = $this->read->parse($cv->markdown);
 
-        if ($lint->passes()) {
-            $this->store->handle($raw, $parsed);
-        } else {
-            $this->read->logFailure($path, $lint);
+        if (! $lint->passes()) {
+            $this->read->logFailure($lint);
         }
 
         return MasterCvReport::of(
-            $path,
-            // Laravel sets PHP's default timezone from the application's.
-            // Naming it is what makes a formatted time say which zone it is
-            // in, rather than printing a bare offset.
-            CarbonImmutable::createFromTimestamp(
-                $this->files->lastModified($path),
-                date_default_timezone_get(),
-            ),
+            $cv->markdown,
+            $cv->updated_at,
             $parsed,
             $lint,
             // Run whether or not anything is missing: how many IDs a CV wants
             // adding is only knowable by working out what they would be, and
             // the answer is what the download offers.
-            $this->assign->handle($raw),
+            $this->assign->handle($cv->markdown),
         );
     }
 }

@@ -5,11 +5,13 @@ namespace App\MasterCv;
 use App\Models\MasterCvVersion;
 
 /**
- * The master CV as a stored version, ready for a revision to be generated
+ * The stored master CV as a version, ready for a revision to be generated
  * from.
  *
- * This is the gate: a CV that fails lint never becomes a version, so no
- * revision can reference one. Every generation run goes through here.
+ * This is the gate, and it is the only thing that writes a version: a CV that
+ * fails lint never becomes one, so no revision can reference one, and a
+ * version exists because a generation used the text in it. Every generation
+ * run goes through here.
  */
 class LoadMasterCvVersion
 {
@@ -18,16 +20,16 @@ class LoadMasterCvVersion
         private readonly StoreMasterCvVersion $store,
     ) {}
 
-    public function handle(?string $path = null): MasterCvVersion
+    public function handle(): MasterCvVersion
     {
-        [$raw, $parsed, $report] = $this->read->handle($path);
+        [$markdown, $parsed, $report] = $this->read->handle();
 
         if (! $report->passes()) {
-            $this->read->logFailure($this->read->path($path), $report);
+            $this->read->logFailure($report);
 
-            throw MasterCvIsNotUsable::failedLint($this->read->path($path), $report);
+            throw MasterCvIsNotUsable::failedLint($report);
         }
 
-        return $this->store->handle($raw, $parsed);
+        return $this->store->handle($markdown, $parsed);
     }
 }

@@ -5,12 +5,14 @@ namespace Tests\Feature\Console;
 use App\Rendering\PdfConversionFailed;
 use App\Rendering\PdfConverter;
 use App\Rendering\Testing\FakePdfConverter;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\MasterCvFixtures;
 use Tests\TestCase;
 
 class CvPreviewCommandTest extends TestCase
 {
     use MasterCvFixtures;
+    use RefreshDatabase;
 
     private string $destination;
 
@@ -48,13 +50,22 @@ class CvPreviewCommandTest extends TestCase
         $this->assertStringNotContainsString('TODO', $html);
     }
 
-    public function test_it_defaults_to_the_configured_master_cv(): void
+    public function test_it_defaults_to_the_stored_master_cv(): void
     {
-        config(['cv.master_cv.path' => $this->fixturePath()]);
+        $this->storeMasterCv();
 
         $this->artisan('cv:preview', ['destination' => $this->destination])->assertSuccessful();
 
         $this->assertFileExists($this->destination);
+    }
+
+    public function test_it_says_so_plainly_when_no_cv_is_stored_and_none_is_given(): void
+    {
+        $this->artisan('cv:preview', ['destination' => $this->destination])
+            ->expectsOutputToContain('No master CV is stored.')
+            ->assertFailed();
+
+        $this->assertFileDoesNotExist($this->destination);
     }
 
     /**
@@ -76,7 +87,7 @@ class CvPreviewCommandTest extends TestCase
         $this->artisan('cv:preview', [
             'destination' => $this->destination,
             '--cv' => $this->fixturePath('master-cv/nothing-here.md'),
-        ])->assertFailed();
+        ])->expectsOutputToContain('cannot be read')->assertFailed();
     }
 
     public function test_it_reports_a_converter_failure_rather_than_writing_half_a_file(): void

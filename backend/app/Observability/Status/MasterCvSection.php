@@ -2,19 +2,12 @@
 
 namespace App\Observability\Status;
 
-use App\MasterCv\MasterCvState;
 use App\MasterCv\ReadMasterCv;
-use Carbon\CarbonImmutable;
-use Illuminate\Filesystem\Filesystem;
 use Throwable;
 
 class MasterCvSection implements StatusSection
 {
-    public function __construct(
-        private readonly Filesystem $files,
-        private readonly ReadMasterCv $read,
-        private readonly string $path,
-    ) {}
+    public function __construct(private readonly ReadMasterCv $read) {}
 
     public function heading(): string
     {
@@ -23,41 +16,41 @@ class MasterCvSection implements StatusSection
 
     public function rows(): array
     {
-        $state = MasterCvState::at($this->files, $this->path);
+        $stored = $this->read->stored();
 
-        $rows = [
-            'path' => $this->path,
-            'state' => $state->value,
-        ];
-
-        // A modification time is only a fact about a master CV when there is
-        // one. Reporting it for anything else dresses a missing file up as a
-        // present one.
-        if ($state === MasterCvState::Readable) {
-            $rows['modified'] = CarbonImmutable::createFromTimestamp(
-                $this->files->lastModified($this->path)
-            )->toIso8601String();
-
-            $rows = [...$rows, ...$this->parse()];
+        // A fresh installation has no CV. That is the ordinary first state
+        // rather than a fault, so it reads as one — and it names the two ways
+        // out, because nothing else in the system will work until one is
+        // taken.
+        if ($stored === null) {
+            return [
+                'stored' => 'no: write one in the review UI, or run php artisan cv:import <path>',
+            ];
         }
 
-        return $rows;
+        return [
+            'stored' => 'yes',
+            'saved' => $stored->updated_at->toIso8601String(),
+            ...$this->parse($stored->markdown),
+        ];
     }
 
     /**
-     * The version the file parses to now, and whether it would be refused.
+     * The version the stored CV parses to now, and whether it would be
+     * refused.
      *
-     * Both are read live rather than recalled: the file on disk is the editing
-     * surface, so the question this answers is "what would generating from it
-     * use, and would it be allowed to".
+     * Both are read live rather than recalled: what this answers is "what
+     * would generating from it use, and would it be allowed to".
      *
      * @return array<string, string>
      */
-    private function parse(): array
+    private function parse(string $markdown): array
     {
         try {
-            [, $parsed, $report] = $this->read->handle($this->path);
+            [$parsed, $report] = $this->read->parse($markdown);
         } catch (Throwable) {
+            // `cv:status` is the first place somebody looks. A parser that
+            // falls over must not take the rest of the report with it.
             return ['lint' => 'could not be checked'];
         }
 

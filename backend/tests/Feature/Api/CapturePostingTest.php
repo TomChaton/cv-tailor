@@ -124,12 +124,12 @@ class CapturePostingTest extends TestCase
     }
 
     /**
-     * A posting captured while the master CV is unusable is still a posting
+     * A posting captured before there is a master CV at all is still a posting
      * worth having, so capture is the one step the state of the CV cannot stop.
      */
-    public function test_a_capture_succeeds_when_the_master_cv_cannot_be_read(): void
+    public function test_a_capture_succeeds_with_no_master_cv_stored(): void
     {
-        config(['cv.master_cv.path' => '/var/lib/cv-tailor/no-such-cv.md']);
+        $this->assertDatabaseCount('master_cv', 0);
 
         $this->capture()->assertCreated();
 
