@@ -2,12 +2,16 @@
  * What capture has to say. The popup turns one of these into a sentence and the
  * badge into a mark, both from `_locales`, so the outcome itself carries no
  * words.
+ *
+ * There is no "nothing found": whether a page holds a job description is the
+ * backend's judgement, and every page the owner captures is sent.
+ * `page-unreadable` is a different fact — a page this extension may not touch.
  */
 export type CaptureOutcome =
   | 'saved'
   | 'already-saved'
   | 'not-configured'
-  | 'nothing-found'
+  | 'page-unreadable'
   | 'unreachable'
   | 'token-rejected'
   | 'backend-error'
@@ -18,7 +22,7 @@ const MESSAGES: Record<CaptureOutcome, string> = {
   saved: 'captureSaved',
   'already-saved': 'captureAlreadySaved',
   'not-configured': 'captureNotConfigured',
-  'nothing-found': 'captureNothingFound',
+  'page-unreadable': 'capturePageUnreadable',
   unreachable: 'captureUnreachable',
   'token-rejected': 'captureTokenRejected',
   'backend-error': 'captureBackendError',

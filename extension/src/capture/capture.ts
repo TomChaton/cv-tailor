@@ -7,17 +7,20 @@ import { landed, worthRetrying } from './outcome';
 import { defer, dueCaptures, enqueue, forget, queueDepth } from './queue';
 
 import type { ApiClient, PostingCapture } from '../api/client';
-import type { PageExtraction } from './extract-script';
 import type { CaptureOutcome } from './outcome';
+import type { PageRead } from './read-page-script';
 
-/** Built by the bundler from `extract-script.ts`. */
-const EXTRACT_FILE = 'extract.js';
+/** Built by the bundler from `read-page-script.ts`. */
+const READ_PAGE_FILE = 'read-page.js';
 
 /**
- * Capture the posting on one tab.
+ * Capture the page on one tab.
  *
  * The capture is queued before it is sent and removed once it lands, so a
  * capture is never lost — the worst case is one the owner is told was kept.
+ *
+ * Nothing here judges what is on the page. Every page the owner captures is
+ * sent, and what it advertises is the backend's answer.
  */
 export async function captureTab(tabId: number, now: number = Date.now()): Promise<CaptureOutcome> {
   const settings = await readSettings();
@@ -28,23 +31,22 @@ export async function captureTab(tabId: number, now: number = Date.now()): Promi
     return await report('not-configured');
   }
 
-  const extraction = await extract(tabId);
+  const read = await readPage(tabId);
 
-  if (!extraction.ok) {
-    return await report('nothing-found');
+  if (read === null) {
+    return await report('page-unreadable');
   }
 
-  log('extraction result', {
-    extractor: extraction.extractor,
-    characters: extraction.posting.extracted_text.length,
-    htmlCharacters: extraction.posting.raw_html.length,
-    hiddenText: extraction.posting.has_hidden_text,
-    hiddenCharacters: extraction.hiddenCharacters,
+  log('page read result', {
+    characters: read.characters,
+    jsonLd: read.hasJsonLd,
+    hiddenText: read.posting.has_hidden_text,
+    hiddenCharacters: read.hiddenCharacters,
   });
 
   const client = createApiClient(settings.baseUrl, settings.token);
-  const entry = await enqueue(extraction.posting, now);
-  const outcome = await send(client, extraction.posting);
+  const entry = await enqueue(read.posting, now);
+  const outcome = await send(client, read.posting);
 
   if (worthRetrying(outcome)) {
     await defer(entry.id, now);
@@ -123,31 +125,35 @@ async function send(client: ApiClient, capture: PostingCapture): Promise<Capture
   }
 }
 
-async function extract(tabId: number): Promise<PageExtraction> {
+/**
+ * Null where the page could not be read at all — a Chrome page, the web store,
+ * a PDF. That is a page this extension may not touch rather than a page holding
+ * nothing, and it is the one thing a capture can still fail at before the
+ * backend is involved.
+ */
+async function readPage(tabId: number): Promise<PageRead | null> {
   try {
-    await chrome.scripting.executeScript({ target: { tabId }, files: [EXTRACT_FILE] });
+    await chrome.scripting.executeScript({ target: { tabId }, files: [READ_PAGE_FILE] });
 
     const [injected] = await chrome.scripting.executeScript({
       target: { tabId },
-      func: callExtractor,
+      func: callPageReader,
     });
 
     const result: unknown = injected?.result;
 
-    if (typeof result === 'object' && result !== null && 'ok' in result) {
-      return result as PageExtraction;
+    if (typeof result === 'object' && result !== null && 'posting' in result) {
+      return result as PageRead;
     }
 
-    log('extraction failed', { reason: 'no-result' });
+    log('page read failed', { reason: 'no-result' });
 
-    return { ok: false };
+    return null;
   } catch {
-    // A page the extension may not read — a Chrome page, the web store, a PDF —
-    // refuses injection. Nothing was found on it either way, and the message is
-    // not worth logging: it carries the page's URL.
-    log('extraction failed', { reason: 'injection-refused' });
+    // The thrown message is not worth logging: it carries the page's URL.
+    log('page read failed', { reason: 'injection-refused' });
 
-    return { ok: false };
+    return null;
   }
 }
 
@@ -155,10 +161,10 @@ async function extract(tabId: number): Promise<PageExtraction> {
  * Serialised to source by `executeScript`, so it closes over nothing: the name
  * the injected file publishes is written out here rather than imported.
  */
-function callExtractor(): unknown {
-  const extractor = (globalThis as unknown as Record<string, unknown>)['__cvTailorExtract'];
+function callPageReader(): unknown {
+  const reader = (globalThis as unknown as Record<string, unknown>)['__cvTailorReadPage'];
 
-  return typeof extractor === 'function' ? (extractor as () => unknown)() : undefined;
+  return typeof reader === 'function' ? (reader as () => unknown)() : undefined;
 }
 
 async function report(outcome: CaptureOutcome): Promise<CaptureOutcome> {

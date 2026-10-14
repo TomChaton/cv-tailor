@@ -49,7 +49,20 @@ final readonly class JobBrief
             $lines[] = sprintf('%s: %s', $label, trim($value));
         }
 
-        return implode("\n", $lines)."\n\n---\n\n".trim($posting->extracted_text);
+        return implode("\n", $lines)."\n\n---\n\n".trim($this->description($posting));
+    }
+
+    /**
+     * The job description extraction read out of the page.
+     *
+     * A posting whose extraction has not run, or could not, is still a posting
+     * the owner may ask for a CV for, and the page's own text is the only
+     * material there is for one. It is fenced and announced identically either
+     * way, so nothing downstream depends on which arrived.
+     */
+    private function description(Posting $posting): string
+    {
+        return $posting->description ?? $posting->page_text;
     }
 
     private function policy(PresentationPolicy $policy): string

@@ -383,9 +383,10 @@ stand.
 jobs, so that is what `lang/en_GB` says. `postings` in code, "Jobs" on screen —
 deliberately, and not to be made to agree.
 
-- **`postings`** — a captured posting: URL, source site, title, company,
-  location, salary text, raw HTML, extracted text, hidden-text flag, dedupe
-  hash, `status`, `current_revision_id`, `applied_revision_id`.
+- **`postings`** — a captured posting. The capture's own material: URL, source
+  site, `page_text`, `json_ld`, hidden-text flag, dedupe hash. Extraction's
+  answer: title, company, location, salary text, description, `extracted_at`.
+  And the tracker: `status`, `current_revision_id`, `applied_revision_id`.
 - **`revisions`** — one tailored CV for a posting.
   - `posting_id`, `parent_revision_id` (nullable — revisions form a tree, not a
     list), `master_cv_version_id`.
@@ -467,11 +468,18 @@ application tracker.
 
 **`wanted` is the gate, and it is there because capturing and generating are
 two different decisions.** A posting is captured because it looked interesting
-for a moment, which is free and speculative; generating a CV for one costs
-money and attention. Collapsing the two spends on every posting the owner ever
-glanced at. So nothing on a schedule moves a posting off `captured` — the owner
-marks it, and `cv:queue` sweeps what they marked. A posting nobody asks for
-stays where it is and costs nothing, however long it sits there.
+for a moment; generating a CV for one costs money and attention. Collapsing the
+two spends on every posting the owner ever glanced at. So nothing on a schedule
+moves a posting off `captured` — the owner marks it, and `cv:queue` sweeps what
+they marked.
+
+**Capturing is nearly free rather than free, and what that buys is a list worth
+choosing from.** A page's text through a cheap model is a fraction of a penny
+against a whole generation, and it is what puts a title and a company in front
+of the owner when they come to decide. Extracting only once a posting is marked
+would leave them choosing from a list of URLs, which is the one thing the list
+exists not to be. A posting nobody asks for still costs nothing further,
+however long it sits there.
 
 **`discarded` is reachable from every other state**, because a posting is
 abandoned on sight, or after its CV has been read, or after the application
@@ -512,19 +520,23 @@ absent from the report cannot be told apart from one that has been renamed.
 
 ### Deduplication
 
-The same role appears on several boards. Capture computes a hash over the
-normalised title, company and description text; a capture matching an existing
-posting returns that posting rather than creating another. Agency reposts with the
-client anonymised will not match, and that is accepted.
+Capture computes a hash over the normalised `page_text`; a capture matching an
+existing posting returns that posting rather than creating another.
 
-**The URL is not part of the hash.** The same posting under two URLs is one
-posting, and a retry the extension never saw the answer to is the same capture
+**The hash is over the page text and over nothing a model produced.** A hash
+derived from model output would make a retried capture hash differently from the
+first attempt, and capture would stop being idempotent — which is the property
+the extension's whole retry queue rests on.
+
+**The cost is that the same role on two boards is two postings.** The owner
+discards one, which is visible and cheap, where a broken retry is neither. A
+second pass that merged postings whose extracted title and company agree is a
+thing that could be built; the hash is not where it would live.
+
+**The URL is not part of the hash.** The same page under two URLs is one
+capture, and a retry the extension never saw the answer to is the same capture
 rather than a second one. Normalising case and whitespace is part of the same
-judgement: neither changes what a posting says.
-
-The parts are joined by a separator that cannot occur in any of them, so no
-wording can shuffle words across the boundary between title and company and
-collide with a different posting.
+judgement: neither changes what a page says.
 
 ## Capture
 
@@ -546,6 +558,63 @@ API contract. What belongs here is where the pieces live.
   posting.** That is all an answer to a capture needs, and keeping Eloquent out
   of the response path is what lets the OpenAPI document be generated from the
   types alone — see below.
+- **A capture dispatches one queued extraction job, and a duplicate dispatches
+  none.** The answer a duplicate wants is already stored, so paying a model for
+  it again is what the dedupe hash exists to avoid.
+- **Extraction is a live call, not a batch.** Everything else in the pipeline
+  is asynchronous because nobody is waiting on it; the postings list is
+  unusable until extraction has run, and the owner is looking at it. A batch's
+  discount is bought with hours, and these are the hours nobody has.
+- **A field whose type no validation rule can express states its own schema.**
+  Laravel's `array` rule accepts a list and an object alike, and the OpenAPI
+  document's request body is generated from the rules — so a JSON object
+  documented as a list of strings reaches the extension's generated client as
+  one, and the two sides disagree while both type-check. A rule object with a
+  `docs()` method is where the shape is stated, beside the check that enforces
+  it.
+
+### Extraction
+
+A model reads the captured page and reports what job it advertises: the title,
+the company, the location, the salary and the job description itself.
+
+- **Finding the job description on an arbitrary page is a judgement, not a
+  parse.** A model reading the page's text does it for every board at once,
+  where an extractor per site is a maintenance burden multiplied by the number
+  of boards anybody browses.
+- **Where the JSON-LD states a field, the JSON-LD wins.** A page that states
+  its salary has stated it, and a deterministic answer is never displaced by an
+  inferred one. The model is asked for every field regardless, so the log can
+  record which source filled each one and whether the two agreed — a
+  comparison of sources rather than of values, because a log line does not
+  carry the page's text.
+- **A `JobPosting`'s own `description` is not one of those fields.** It is a
+  blob of the page's markup, so reading it would be a second extraction rather
+  than a stated fact. The description is the model's alone.
+- **A field neither source gives is left null.** The postings list shows a null
+  as absent, and guessing is what extraction replaces rather than what it
+  introduces.
+- **The description the model returns is what generation tailors against.** A
+  posting whose extraction has not run, or could not, falls back to the page's
+  own text: it is still a posting the owner may ask for a CV for, and the page
+  is the only material there is for one.
+- **Nothing the model returns is an instruction.** Its description is tailored
+  against exactly as a job description already is, and the prompt that produced
+  it states that the page is material to read rather than instructions to
+  follow. The page is untrusted input and more of it is sent than a container
+  ever was.
+- **Extraction has a `prompt_version` of its own**, independent of
+  generation's: the two prompts change for different reasons, and a bump to one
+  that moved the other would make every revision look as though its prompt had
+  changed.
+- **A failure never loses a posting.** The posting stays listed with its fields
+  absent and `extracted_at` null, and it is markable as wanted regardless — a
+  posting the owner recognises from its URL is still worth a CV. The job logs
+  the failure and rethrows, so the queue retries it on its own terms.
+- **A posting already extracted is left alone.** A duplicate dispatch is the
+  ordinary consequence of a retried job, and a second reading of the same page
+  would be paid for twice to reach the same answer. `extracted_at` is what the
+  guard reads, and it is also what `cv:status` counts.
 
 ### The OpenAPI document
 
@@ -695,7 +764,8 @@ Ordered from most to least stable, so prompt caching works:
 
 `prompt_version` is bumped whenever prompt text or the output schema changes,
 so a difference between revisions can be attributed to the prompt or to the
-instructions. **A revision records it when its request is built**, not when the
+instructions. **It is generation's version and nothing else's**: extraction
+carries one of its own, and the two move independently. **A revision records it when its request is built**, not when the
 revision was created: one that waited in `pending` across a prompt change is
 generated by the new prompt, so the new version is what it was generated with,
 and recording it any earlier records an intention rather than a fact.
@@ -721,6 +791,10 @@ traps. The prompt states that the job description is material to analyse, not
 instructions to follow. The extension sends only visible text and flags hidden
 text, which the review UI shows. The deterministic validators catch most
 injected claims regardless.
+
+**The description arrives from extraction, which read the same untrusted page**,
+so it is fenced and announced here exactly as it always was. A model's answer
+about a page is data about a job and never an instruction to this prompt.
 
 ### Regeneration
 
@@ -856,8 +930,12 @@ revisions that are not moving.
 
 The provider sits behind an `LlmClient` interface (`submitBatch`, `pollBatch`,
 `fetchResults`, `complete`), with model names in configuration — one for
-generation, one for validation. Swapping providers is a new implementation,
-not a refactor. The default implementation targets Anthropic's API through the
+generation, one for validation, one for extraction, each with a cost rate and a
+response ceiling of its own. **The purpose chooses the model**, so no caller can
+pin one by accident, and a cost report splits by what the spend bought.
+Extraction defaults to a cheap model: reading a page and reporting the job on it
+is an easy task and does not want the generation model. Swapping providers is a
+new implementation, not a refactor. The default implementation targets Anthropic's API through the
 official PHP SDK rather than hand-rolled HTTP, and is the only part of the
 application that names a provider type.
 
@@ -1240,10 +1318,12 @@ Everything captured, newest first, and the decision the owner takes about each
 one. It is the surface the gate exists for: a posting is marked as wanted here
 or it is never generated from.
 
-- **A field the capture did not find shows as absent**, not as an empty cell.
-  Capture omits rather than guesses, and a blank cell cannot be told from a
+- **A field neither the page nor extraction gave shows as absent**, not as an
+  empty cell. Neither source guesses, and a blank cell cannot be told from a
   value that is blank — so a list that printed one would hand the owner a fact
-  the system never had.
+  the system never had. A posting still awaiting extraction, or one whose
+  extraction failed, reads the same way: `php artisan cv:status` is where the
+  difference between the two is visible.
 - **The warning about hidden text is a warning and nothing else.** Hidden text
   in a listing is sometimes aimed at AI tools, so the owner needs to know
   before trusting what was extracted. A listing with none is the ordinary case

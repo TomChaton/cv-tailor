@@ -93,11 +93,11 @@ class PostingsListTest extends TestCase
     }
 
     /**
-     * Capture omits rather than guesses, and the list must not undo that: a
-     * blank cell cannot be told from a value that is blank.
+     * Neither the page nor extraction guesses, and the list must not undo that:
+     * a blank cell cannot be told from a value that is blank.
      */
     #[DataProvider('absentFields')]
-    public function test_a_field_the_capture_did_not_find_shows_as_absent(string $column): void
+    public function test_a_field_neither_source_gave_shows_as_absent(string $column): void
     {
         $this->signIn();
 
@@ -122,6 +122,42 @@ class PostingsListTest extends TestCase
         yield 'company' => ['company'];
         yield 'location' => ['location'];
         yield 'salary' => ['salary_text'];
+    }
+
+    /**
+     * A posting whose extraction has not run yet, and one whose extraction
+     * failed, are both rows with nothing in them. `cv:status` is where the
+     * difference between the two is visible.
+     */
+    public function test_a_posting_awaiting_extraction_lists_with_every_field_absent(): void
+    {
+        $this->signIn();
+
+        $posting = Posting::factory()->awaitingExtraction()->create();
+
+        Livewire::test(ListPostings::class)
+            ->assertCanSeeTableRecords([$posting])
+            ->assertTableColumnStateSet('title', null, $posting)
+            ->assertTableColumnStateSet('company', null, $posting)
+            ->assertTableColumnStateSet('location', null, $posting)
+            ->assertTableColumnStateSet('salary_text', null, $posting)
+            ->assertSee(__('postings.absent'));
+    }
+
+    /**
+     * A posting the owner recognises from its URL is still worth a CV, so the
+     * gate is open whatever extraction made of the page.
+     */
+    public function test_a_posting_awaiting_extraction_is_still_markable_as_wanted(): void
+    {
+        $this->signIn();
+
+        $posting = Posting::factory()->awaitingExtraction()->create();
+
+        Livewire::test(ListPostings::class)
+            ->callAction(TestAction::make('want')->table($posting));
+
+        $this->assertSame(PostingStatus::Wanted, $posting->refresh()->status);
     }
 
     public function test_it_shows_the_status(): void

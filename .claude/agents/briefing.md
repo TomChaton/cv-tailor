@@ -120,12 +120,19 @@ The extension and backend meet at one HTTP API, versioned under `/api/v1`.
 - **Capturing a job is idempotent.** The extension may retry; the backend
   deduplicates (see the backend briefing) and returns the existing job rather
   than creating a second.
-- **Capture carries the raw material, not an interpretation of it**: the
-  page URL, the extracted visible text of the job description, the raw HTML of
-  the extracted container, page metadata where present (title, company,
-  location, salary), the source site, and whether hidden text was found in the
-  container. Anything the backend can work out later, it works out later — so
-  better extraction can be re-run over old captures.
+- **Capture carries the raw material, not an interpretation of it**: the page
+  URL, the page's whole visible text, the `JobPosting` JSON-LD the page
+  published about itself where it published any, the source site, and whether
+  hidden text was found. The backend interprets it. Anything the backend can
+  work out later, it works out later — so better extraction can be re-run over
+  old captures.
+- **The extension does not choose which part of a page is the job
+  description.** Finding it is a judgement rather than a parse, and a judgement
+  made at capture time cannot be revisited: what was not sent cannot be
+  re-read. A container the extension picked left the page's metadata outside
+  it, so no improvement to extraction could recover a title from what was
+  stored. The whole page can be read again, so the whole page is what is
+  stored.
 
 ### Capture
 
@@ -142,10 +149,14 @@ The extension and backend meet at one HTTP API, versioned under `/api/v1`.
   so capture is the one step the state of the CV cannot stop. Queueing a
   posting for generation is a later step, and that one does depend on the CV.
 - **The API states a request body limit, and refuses a larger body with
-  `413`.** A capture carries a page's whole HTML, so without a stated ceiling
-  the largest page anybody browses decides how much memory the application
-  uses. The limit is configuration, and it is checked against the declared
-  length before anything reads the body.
+  `413`.** A capture carries a page's whole visible text, so without a stated
+  ceiling the largest page anybody browses decides how much memory the
+  application uses. The limit is configuration, and it is checked against the
+  declared length before anything reads the body.
+- **The capture itself says nothing about what the page advertises.** The
+  title, the company, the location, the salary and the job description are
+  extraction's answer, worked out on the backend after the capture has landed.
+  See the backend briefing.
 
 ## Data that never leaves the host
 

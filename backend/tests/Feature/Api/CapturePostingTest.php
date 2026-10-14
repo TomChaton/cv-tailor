@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api;
 
+use App\Jobs\ExtractPostingFields;
 use App\Models\Posting;
 use App\Models\Revision;
 use App\Models\User;
@@ -9,6 +10,7 @@ use App\Observability\EventLogger;
 use App\Owner\IssueExtensionToken;
 use App\Postings\PostingStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Testing\TestResponse;
 use Mockery;
 use Mockery\MockInterface;
@@ -21,9 +23,22 @@ class CapturePostingTest extends TestCase
 
     private const URI = '/api/v1/postings';
 
-    private const EXTRACTED_TEXT = "Senior PHP Engineer\n\nWe are looking for a PHP engineer to join the platform team.";
+    private const PAGE_TEXT = <<<'TEXT'
+    All jobs Saved Sign in
 
-    private const RAW_HTML = '<div class="description"><p>We are looking for a PHP engineer.</p></div>';
+    Senior PHP Engineer
+    Example Ltd — Manchester
+
+    We are looking for a PHP engineer to join the platform team.
+
+    Example Ltd is an equal opportunities employer.
+    TEXT;
+
+    private const JSON_LD = [
+        '@type' => 'JobPosting',
+        'title' => 'Senior PHP Engineer',
+        'hiringOrganization' => ['@type' => 'Organization', 'name' => 'Example Ltd'],
+    ];
 
     private string $token;
 
@@ -35,6 +50,11 @@ class CapturePostingTest extends TestCase
         // writes a log line of its own, and a test watching for capture's
         // lines should not see it.
         $this->token = app(IssueExtensionToken::class)->handle(User::factory()->create(), 'extension');
+
+        // A capture hands the posting to extraction. That it does so is
+        // asserted here; what extraction then makes of the page is
+        // extraction's own test, and it is the one thing that costs money.
+        Queue::fake([ExtractPostingFields::class]);
     }
 
     public function test_a_capture_with_no_token_is_refused(): void
@@ -61,7 +81,7 @@ class CapturePostingTest extends TestCase
         $response->assertExactJson(['id' => Posting::sole()->id, 'status' => 'captured']);
     }
 
-    public function test_it_records_the_raw_material_and_nothing_worked_out_from_it(): void
+    public function test_it_records_the_page_and_nothing_worked_out_from_it(): void
     {
         $this->capture($this->payload(['has_hidden_text' => true]))->assertCreated();
 
@@ -69,14 +89,28 @@ class CapturePostingTest extends TestCase
 
         $this->assertSame('https://jobs.example.com/vacancy/7781', $posting->url);
         $this->assertSame('jobs.example.com', $posting->source_site);
-        $this->assertSame('Senior PHP Engineer', $posting->title);
-        $this->assertSame('Example Ltd', $posting->company);
-        $this->assertSame('Manchester', $posting->location);
-        $this->assertSame('£70,000 – £85,000', $posting->salary_text);
-        $this->assertSame(self::EXTRACTED_TEXT, $posting->extracted_text);
-        $this->assertSame(self::RAW_HTML, $posting->raw_html);
+        $this->assertSame(self::PAGE_TEXT, $posting->page_text);
+        $this->assertSame(self::JSON_LD, $posting->json_ld);
         $this->assertTrue($posting->has_hidden_text);
         $this->assertSame(PostingStatus::Captured, $posting->status);
+
+        // What the posting says is extraction's answer, and it has not run.
+        $this->assertNull($posting->title);
+        $this->assertNull($posting->company);
+        $this->assertNull($posting->location);
+        $this->assertNull($posting->salary_text);
+        $this->assertNull($posting->description);
+        $this->assertNull($posting->extracted_at);
+    }
+
+    public function test_it_hands_a_new_posting_to_extraction(): void
+    {
+        $this->capture()->assertCreated();
+
+        Queue::assertPushed(
+            ExtractPostingFields::class,
+            fn (ExtractPostingFields $job): bool => $job->posting->is(Posting::sole()),
+        );
     }
 
     /**
@@ -98,21 +132,24 @@ class CapturePostingTest extends TestCase
         $this->assertSame($url, Posting::sole()->url);
     }
 
-    public function test_metadata_the_page_did_not_offer_is_stored_as_absent(): void
+    public function test_a_page_that_published_no_job_posting_object_is_captured_without_one(): void
     {
-        $this->capture($this->payload([
-            'title' => null,
-            'company' => null,
-            'location' => null,
-            'salary_text' => null,
-        ]))->assertCreated();
+        $this->capture($this->payload(['json_ld' => null]))->assertCreated();
 
-        $posting = Posting::sole();
+        $this->assertNull(Posting::sole()->json_ld);
+    }
 
-        $this->assertNull($posting->title);
-        $this->assertNull($posting->company);
-        $this->assertNull($posting->location);
-        $this->assertNull($posting->salary_text);
+    /**
+     * There is no floor and no "nothing found": which part of a page is the job
+     * description is the backend's judgement to make now, and the extension
+     * sends whatever the owner was looking at.
+     */
+    public function test_a_page_whose_text_is_one_line_is_captured_rather_than_refused(): void
+    {
+        $this->capture($this->payload(['page_text' => 'Senior PHP Engineer, Manchester.']))
+            ->assertCreated();
+
+        $this->assertSame('Senior PHP Engineer, Manchester.', Posting::sole()->page_text);
     }
 
     public function test_capture_creates_no_revision(): void
@@ -136,7 +173,7 @@ class CapturePostingTest extends TestCase
         $this->assertSame(1, Posting::count());
     }
 
-    public function test_the_same_posting_captured_twice_answers_200_with_the_first_one(): void
+    public function test_the_same_page_captured_twice_answers_200_with_the_first_one(): void
     {
         $this->capture()->assertCreated();
         $first = Posting::sole();
@@ -148,7 +185,19 @@ class CapturePostingTest extends TestCase
         $this->assertSame(1, Posting::count());
     }
 
-    public function test_the_same_posting_on_another_board_is_the_posting_already_held(): void
+    /**
+     * The answer is already stored, so paying a model for it again is what the
+     * dedupe hash exists to avoid.
+     */
+    public function test_the_second_capture_of_a_page_asks_nothing_of_a_model(): void
+    {
+        $this->capture()->assertCreated();
+        $this->capture()->assertOk();
+
+        Queue::assertPushed(ExtractPostingFields::class, 1);
+    }
+
+    public function test_the_same_page_under_another_url_is_the_posting_already_held(): void
     {
         $this->capture()->assertCreated();
 
@@ -173,13 +222,12 @@ class CapturePostingTest extends TestCase
         $this->assertSame('jobs.example.com', Posting::sole()->source_site);
     }
 
-    public function test_a_different_posting_is_a_posting_of_its_own(): void
+    public function test_a_different_page_is_a_posting_of_its_own(): void
     {
         $this->capture()->assertCreated();
 
         $this->capture($this->payload([
-            'title' => 'Senior Go Engineer',
-            'extracted_text' => 'We are looking for a Go engineer to join the platform team.',
+            'page_text' => 'We are looking for a Go engineer to join the platform team.',
         ]))->assertCreated();
 
         $this->assertSame(2, Posting::count());
@@ -189,9 +237,7 @@ class CapturePostingTest extends TestCase
     {
         $this->capture([])
             ->assertUnprocessable()
-            ->assertJsonValidationErrors([
-                'url', 'source_site', 'extracted_text', 'raw_html', 'has_hidden_text',
-            ]);
+            ->assertJsonValidationErrors(['url', 'source_site', 'page_text', 'has_hidden_text']);
 
         $this->assertSame(0, Posting::count());
     }
@@ -203,18 +249,18 @@ class CapturePostingTest extends TestCase
             ->assertJsonValidationErrors(['url']);
     }
 
-    public function test_metadata_longer_than_its_column_is_refused(): void
+    public function test_structured_data_that_is_not_an_object_is_refused(): void
     {
-        $this->capture($this->payload(['company' => str_repeat('a', 256)]))
+        $this->capture($this->payload(['json_ld' => 'JobPosting']))
             ->assertUnprocessable()
-            ->assertJsonValidationErrors(['company']);
+            ->assertJsonValidationErrors(['json_ld']);
     }
 
     public function test_a_body_past_the_limit_is_refused(): void
     {
         config(['cv.api.max_body_bytes' => 512]);
 
-        $this->capture($this->payload(['raw_html' => '<div>'.str_repeat('x', 1024).'</div>']))
+        $this->capture($this->payload(['page_text' => str_repeat('x', 1024)]))
             ->assertStatus(413);
 
         $this->assertSame(0, Posting::count());
@@ -227,7 +273,7 @@ class CapturePostingTest extends TestCase
         $this->capture()->assertCreated();
     }
 
-    public function test_it_logs_the_capture_with_the_sizes_that_show_a_truncated_extraction(): void
+    public function test_it_logs_the_capture_with_the_size_that_shows_a_truncated_read(): void
     {
         /** @var EventLogger&MockInterface $logger */
         $logger = Mockery::mock(EventLogger::class);
@@ -240,14 +286,14 @@ class CapturePostingTest extends TestCase
                 $this->assertSame('jobs.example.com', $context['source_site']);
                 $this->assertSame($posting->dedupe_hash, $context['dedupe_hash']);
                 $this->assertFalse($context['has_hidden_text']);
-                $this->assertSame(strlen(self::RAW_HTML), $context['raw_html_bytes']);
-                $this->assertSame(mb_strlen(self::EXTRACTED_TEXT), $context['extracted_text_chars']);
+                $this->assertSame(mb_strlen(self::PAGE_TEXT), $context['page_text_chars']);
+                $this->assertTrue($context['has_json_ld']);
 
-                // Never the posting's own text, its HTML or its URL: the row
-                // holds all three and a log line does not need them.
+                // Never the page's own text or its URL: the row holds both and
+                // a log line does not need them.
                 $this->assertSame([
                     'posting_id', 'source_site', 'dedupe_hash', 'has_hidden_text',
-                    'raw_html_bytes', 'extracted_text_chars',
+                    'page_text_chars', 'has_json_ld',
                 ], array_keys($context));
 
                 return true;
@@ -292,11 +338,11 @@ class CapturePostingTest extends TestCase
         $logger = Mockery::mock(EventLogger::class);
         $logger->shouldReceive('warning')
             ->once()
-            ->with('posting.rejected', ['fields' => ['url', 'raw_html']]);
+            ->with('posting.rejected', ['fields' => ['url', 'page_text']]);
 
         $this->instance(EventLogger::class, $logger);
 
-        $this->capture($this->payload(['url' => 'not a url', 'raw_html' => '']))
+        $this->capture($this->payload(['url' => 'not a url', 'page_text' => '']))
             ->assertUnprocessable();
     }
 
@@ -318,7 +364,7 @@ class CapturePostingTest extends TestCase
 
         $this->instance(EventLogger::class, $logger);
 
-        $this->capture($this->payload(['raw_html' => '<div>'.str_repeat('x', 1024).'</div>']))
+        $this->capture($this->payload(['page_text' => str_repeat('x', 1024)]))
             ->assertStatus(413);
     }
 
@@ -346,13 +392,9 @@ class CapturePostingTest extends TestCase
         return [
             'url' => 'https://jobs.example.com/vacancy/7781',
             'source_site' => 'jobs.example.com',
-            'extracted_text' => self::EXTRACTED_TEXT,
-            'raw_html' => self::RAW_HTML,
+            'page_text' => self::PAGE_TEXT,
+            'json_ld' => self::JSON_LD,
             'has_hidden_text' => false,
-            'title' => 'Senior PHP Engineer',
-            'company' => 'Example Ltd',
-            'location' => 'Manchester',
-            'salary_text' => '£70,000 – £85,000',
             ...$overrides,
         ];
     }

@@ -1,0 +1,11 @@
+{
+  "model": "claude-haiku-4-5",
+  "stop_reason": "end_turn",
+  "usage": {
+    "input_tokens": 1840,
+    "output_tokens": 310,
+    "cache_write_tokens": 0,
+    "cache_read_tokens": 0
+  },
+  "text": "{\"title\": \"Senior PHP Engineer\", \"company\": \"Northwind Systems\", \"location\": \"Leeds (hybrid, four days in the office)\", \"salary_text\": \"\\u00a365,000 to \\u00a378,000\", \"description\": \"Northwind Systems runs the clearing platform that moves parcels between regional depots, and we are looking for a senior PHP engineer to join the team that keeps it honest.\\n\\nWhat we are looking for:\\n\\n- Several years of PHP in production.\\n- Comfort with a relational database under load.\\n- A habit of leaving a codebase easier to change than you found it.\"}"
+}

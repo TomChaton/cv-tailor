@@ -10,7 +10,7 @@ const OUTCOMES: CaptureOutcome[] = [
   'saved',
   'already-saved',
   'not-configured',
-  'nothing-found',
+  'page-unreadable',
   'unreachable',
   'token-rejected',
   'backend-error',
@@ -35,6 +35,15 @@ describe('what capture says', () => {
     for (const key of ['captureKept', 'popupSettings', 'badgeLanded', 'badgeRefused']) {
       expect(catalogueKeys(), key).toContain(key);
     }
+  });
+
+  /**
+   * Whether a page holds a job description is the backend's judgement, so
+   * nothing capture says is an answer to that question.
+   */
+  it('has nothing to say about what is on a page', () => {
+    expect(OUTCOMES).not.toContain('nothing-found');
+    expect(catalogueKeys()).not.toContain('captureNothingFound');
   });
 
   it('counts only a posting the backend holds as landed', () => {

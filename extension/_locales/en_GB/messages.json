@@ -14,8 +14,8 @@
   "captureNotConfigured": {
     "message": "Not configured"
   },
-  "captureNothingFound": {
-    "message": "No job description on this page"
+  "capturePageUnreadable": {
+    "message": "Page cannot be read"
   },
   "captureUnreachable": {
     "message": "Backend unreachable"

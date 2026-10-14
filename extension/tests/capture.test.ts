@@ -6,25 +6,23 @@ import { messageKeyOf } from '../src/capture/outcome';
 
 import { installFakeChrome, messageFor } from './fake-chrome';
 
-import type { PageExtraction } from '../src/capture/extract-script';
+import type { PageRead } from '../src/capture/read-page-script';
 import type { FakeChrome } from './fake-chrome';
 
 const NOW = 1_760_000_000_000;
 const TAB = 17;
 
-const extraction: PageExtraction = {
-  ok: true,
-  extractor: 'readability',
+const pageRead: PageRead = {
   posting: {
     url: 'https://jobs.example.com/vacancy/7781',
     source_site: 'jobs.example.com',
-    extracted_text: 'A job description long enough to be worth keeping.',
-    raw_html: '<div id="description"><p>A job description.</p></div>',
+    page_text: 'All jobs. Senior PHP Engineer at Northwind Systems. A job description.',
+    json_ld: { '@type': 'JobPosting', title: 'Senior PHP Engineer' },
     has_hidden_text: false,
-    title: 'Senior PHP Engineer',
-    company: 'Northwind Systems',
   },
+  characters: 69,
   hiddenCharacters: 0,
+  hasJsonLd: true,
 };
 
 let fake: FakeChrome;
@@ -54,7 +52,7 @@ async function configure(): Promise<void> {
 
 beforeEach(() => {
   fake = installFakeChrome();
-  fake.extraction = extraction;
+  fake.pageRead = pageRead;
   vi.spyOn(console, 'log').mockImplementation(() => undefined);
 });
 
@@ -64,7 +62,7 @@ afterEach(() => {
 });
 
 describe('captureTab', () => {
-  it('sends the extracted posting and reports it saved', async () => {
+  it('sends the page it read and reports it saved', async () => {
     await configure();
     stubFetch(answer(201, { id: 12, status: 'captured' }));
 
@@ -85,16 +83,28 @@ describe('captureTab', () => {
     expect(messageFor(messageKeyOf(outcome))).not.toBe(messageFor('captureSaved'));
   });
 
-  it('injects the extractor into the one tab the owner acted on', async () => {
+  it('injects the page reader into the one tab the owner acted on', async () => {
     await configure();
     stubFetch(answer(201, { id: 12, status: 'captured' }));
 
     await captureTab(TAB, NOW);
 
     expect(fake.injections).toEqual([
-      { files: ['extract.js'], hasFunc: false },
+      { files: ['read-page.js'], hasFunc: false },
       { files: undefined, hasFunc: true },
     ]);
+  });
+
+  it('sends the page whole, with whatever the page published about itself', async () => {
+    await configure();
+
+    const fetch = stubFetch(answer(201, { id: 12, status: 'captured' }));
+
+    await captureTab(TAB, NOW);
+
+    const request = fetch.mock.calls[0]![0] as Request;
+
+    expect(await request.json()).toEqual(pageRead.posting);
   });
 
   it('stops before reading the page when nothing is configured', async () => {
@@ -102,12 +112,39 @@ describe('captureTab', () => {
     expect(fake.injections).toHaveLength(0);
   });
 
-  it('reports a page it cannot read as nothing found', async () => {
+  /**
+   * A Chrome page, the web store or a PDF refuses injection. That is a page the
+   * extension may not touch rather than a page holding nothing.
+   */
+  it('reports a page it may not read as unreadable', async () => {
     await configure();
     fake.injectionRefused = true;
 
-    expect(await captureTab(TAB, NOW)).toBe('nothing-found');
+    expect(await captureTab(TAB, NOW)).toBe('page-unreadable');
     expect(await readQueue()).toHaveLength(0);
+  });
+
+  /**
+   * There is no floor and no judgement about what a page holds, so a page with
+   * one line on it is sent like any other.
+   */
+  it('sends a page whose text is one line', async () => {
+    await configure();
+    fake.pageRead = {
+      posting: {
+        url: 'https://jobs.example.com/vacancy/7781',
+        source_site: 'jobs.example.com',
+        page_text: 'Senior PHP Engineer, Leeds.',
+        has_hidden_text: false,
+      },
+      characters: 27,
+      hiddenCharacters: 0,
+      hasJsonLd: false,
+    } satisfies PageRead;
+
+    stubFetch(answer(201, { id: 12, status: 'captured' }));
+
+    expect(await captureTab(TAB, NOW)).toBe('saved');
   });
 
   it('keeps a capture the backend never answered and shows the queue depth', async () => {

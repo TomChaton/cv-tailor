@@ -212,6 +212,24 @@ class CvStatusCommandTest extends TestCase
         );
     }
 
+    /**
+     * Extraction is a queued job per capture, so a worker that has stopped
+     * shows up as a count that does not come down.
+     */
+    public function test_it_reports_how_many_postings_are_awaiting_extraction(): void
+    {
+        Posting::factory()->count(2)->awaitingExtraction()->create();
+        Posting::factory()->create();
+
+        $this->assertSame(Command::SUCCESS, Artisan::call('cv:status'));
+
+        $output = Artisan::output();
+
+        $this->assertStringContainsString('Extraction', $output);
+        $this->assertMatchesRegularExpression('/awaiting extraction[\s.]+2/', $output);
+        $this->assertMatchesRegularExpression('/extracted[\s.]+1/', $output);
+    }
+
     public function test_the_new_sections_leave_the_ones_above_them_alone(): void
     {
         Posting::factory()->create();
@@ -224,6 +242,7 @@ class CvStatusCommandTest extends TestCase
             ->expectsOutputToContain('Master CV')
             ->expectsOutputToContain('LLM')
             ->expectsOutputToContain('Postings')
+            ->expectsOutputToContain('Extraction')
             ->expectsOutputToContain('Revisions')
             ->expectsOutputToContain('Batches')
             ->assertSuccessful();

@@ -21,11 +21,11 @@ await esbuild.build({
   sourcemap: true,
 });
 
-// The extractor is injected into a page by `chrome.scripting.executeScript`,
+// The page reader is injected into a page by `chrome.scripting.executeScript`,
 // which runs a classic script rather than a module, so this one is an IIFE.
 await esbuild.build({
-  entryPoints: ['src/capture/extract-script.ts'],
-  outfile: `${outdir}/extract.js`,
+  entryPoints: ['src/capture/read-page-script.ts'],
+  outfile: `${outdir}/read-page.js`,
   bundle: true,
   format: 'iife',
   target,

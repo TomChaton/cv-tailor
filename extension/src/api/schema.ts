@@ -15,10 +15,10 @@ export interface paths {
         put?: never;
         /**
          * Capture a posting
-         * @description Idempotent: a capture whose title, company and extracted text match a
-         *     posting already held answers with that posting, so the extension may
-         *     retry a send it never saw the answer to. **A posting this capture created
-         *     answers 201; one that already existed answers 200.**
+         * @description Idempotent: a capture whose page text matches a posting already held
+         *     answers with that posting, so the extension may retry a send it never saw
+         *     the answer to. **A posting this capture created answers 201; one that
+         *     already existed answers 200.**
          *
          *     The response carries the posting's identity and nothing else. The
          *     extension has just sent the text and does not need it back.
@@ -41,19 +41,16 @@ export interface components {
              * @description The page the posting was captured from.
              */
             url: string;
-            /** @description The hostname, or the key of the extractor that read the page. */
+            /** @description The hostname the page was read on. */
             source_site: string;
-            /** @description The visible text of the job description. */
-            extracted_text: string;
-            /** @description The extracted container's HTML, so extraction can be re-run later. */
-            raw_html: string;
-            /** @description Whether the container held text a reader cannot see. */
+            /** @description The page's visible text, whole and uninterpreted. */
+            page_text: string;
+            /** @description The page's `JobPosting` JSON-LD object, where it published one. */
+            json_ld?: {
+                [key: string]: unknown;
+            } | null;
+            /** @description Whether the page held text a reader cannot see. */
             has_hidden_text: boolean;
-            /** @description Taken from the page where it says so, and omitted rather than guessed. */
-            title?: string | null;
-            company?: string | null;
-            location?: string | null;
-            salary_text?: string | null;
         };
         /**
          * PostingStatus

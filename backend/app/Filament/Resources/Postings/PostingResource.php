@@ -31,9 +31,11 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * until it is marked `wanted`, and nothing on a schedule moves it: `cv:queue`
  * sweeps `wanted` and never `captured`.
  *
- * A listed field that capture did not find shows as absent. Capture omits
- * rather than guesses, and a list that printed an empty cell instead would
- * undo that — a blank cell cannot be told from a value that is blank.
+ * A listed field neither the page nor extraction gave shows as absent. Neither
+ * source guesses, and a list that printed an empty cell instead would undo that
+ * — a blank cell cannot be told from a value that is blank. A posting still
+ * awaiting extraction reads the same way, and `php artisan cv:status` is where
+ * the difference is visible.
  *
  * The resource has one page. Regenerating, editing and marking as applied
  * belong with the posting detail, which is a screen of its own.
@@ -225,10 +227,10 @@ class PostingResource extends Resource
      * and not for the row: a posting's id means nothing to anybody outside
      * this database.
      *
-     * Capture omits a company rather than guessing one, so a posting without
-     * one is ordinary and must still download — under the posting's id, which
-     * is the only other thing that tells two files apart. A company whose
-     * name is all punctuation slugs to nothing and takes the same route.
+     * Nothing guesses a company, so a posting without one is ordinary and must
+     * still download — under the posting's id, which is the only other thing
+     * that tells two files apart. A company whose name is all punctuation slugs
+     * to nothing and takes the same route.
      */
     private static function downloadFilename(Posting $posting): string
     {

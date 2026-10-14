@@ -12,8 +12,7 @@ const NOW = 1_760_000_000_000;
 const capture: PostingCapture = {
   url: 'https://jobs.example.com/vacancy/7781',
   source_site: 'jobs.example.com',
-  extracted_text: 'A job description long enough to be worth keeping.',
-  raw_html: '<div id="description"><p>A job description.</p></div>',
+  page_text: 'All jobs. Senior PHP Engineer. A job description worth keeping.',
   has_hidden_text: false,
 };
 

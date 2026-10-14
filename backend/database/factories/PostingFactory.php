@@ -26,12 +26,31 @@ class PostingFactory extends Factory
             'company' => fake()->company(),
             'location' => fake()->city(),
             'salary_text' => null,
-            'raw_html' => '<div>'.$text.'</div>',
-            'extracted_text' => $text,
+            'page_text' => $text,
+            'json_ld' => null,
+            'description' => $text,
+            'extracted_at' => now(),
             'has_hidden_text' => false,
             'dedupe_hash' => hash('sha256', Str::random(32)),
             'status' => PostingStatus::Captured,
         ];
+    }
+
+    /**
+     * A posting as capture leaves it: the page's text, and nothing read out of
+     * it yet. Extraction is what fills the rest, so the default is a posting it
+     * has already run on — most tests want a posting that says something.
+     */
+    public function awaitingExtraction(): static
+    {
+        return $this->state([
+            'title' => null,
+            'company' => null,
+            'location' => null,
+            'salary_text' => null,
+            'description' => null,
+            'extracted_at' => null,
+        ]);
     }
 
     public function status(PostingStatus $status): static
