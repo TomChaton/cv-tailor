@@ -10,19 +10,39 @@
  *
  * `aria-hidden` is deliberately not treated as hidden: it hides an element from
  * assistive technology, not from the person looking at the page.
+ *
+ * An element that generates no box of its own is not thereby hidden. The
+ * browser's visibility answer is about boxes, so it reports such an element as
+ * not visible — but `display: contents` only removes the box, and the children
+ * drawn in its place are on the page. Hiddenness is a question about text, so
+ * for a box-less element it is asked of those children instead, one at a time,
+ * which is what the walk does anyway.
  */
 export function isHidden(element: Element): boolean {
   if (element.hasAttribute('hidden')) {
     return true;
   }
 
+  const style = computedStyleOf(element);
+
+  if (style !== null && generatesNoBox(style)) {
+    return false;
+  }
+
   if (!element.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) {
     return true;
   }
 
-  const style = computedStyleOf(element);
-
   return style !== null && isKeptOutOfSight(style);
+}
+
+/**
+ * Whether the element lays out no box of its own, leaving its children to be
+ * drawn in its place. Clipping, position and opacity need a box to apply to, so
+ * none of the out-of-sight rules can speak about such an element either.
+ */
+function generatesNoBox(style: CSSStyleDeclaration): boolean {
+  return style.display === 'contents';
 }
 
 function computedStyleOf(element: Element): CSSStyleDeclaration | null {

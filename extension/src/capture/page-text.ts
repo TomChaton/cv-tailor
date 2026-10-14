@@ -15,12 +15,15 @@ export interface PageText {
  * text that is merely clipped or parked off-screen — which is exactly what a
  * listing aimed at an automated reader uses. `textContent` is never used: it
  * reports markup, not a page.
+ *
+ * Content the page never renders is neither read nor counted as hidden: see
+ * `isNeverRendered`.
  */
 export function visibleText(root: Element): PageText {
   const { hidden, holdingHidden, hiddenCharacters } = survey(root);
 
   const read = (element: Element): string => {
-    if (hidden.has(element)) {
+    if (hidden.has(element) || isNeverRendered(element)) {
       return '';
     }
 
@@ -56,6 +59,10 @@ function survey(root: Element): Survey {
   let hiddenCharacters = 0;
 
   const visit = (element: Element): void => {
+    if (isNeverRendered(element)) {
+      return;
+    }
+
     if (isHidden(element)) {
       hidden.add(element);
       hiddenCharacters += squash(element.textContent ?? '').length;
@@ -80,6 +87,27 @@ function survey(root: Element): Survey {
   visit(root);
 
   return { hidden, holdingHidden, hiddenCharacters };
+}
+
+/**
+ * Elements whose contents a page never renders.
+ *
+ * Their source is not text a reader was kept from seeing; it is not text the
+ * page says at all. So it is neither read nor counted as hidden, because the
+ * hidden-text warning is only worth drawing if it is rare: a page's own markup
+ * would set it on nearly every capture, and the owner would learn to ignore
+ * the one signal that says a listing is talking to the model.
+ *
+ * The question is settled on the element and never on its computed display: a
+ * page's own source is markup however the page styles it. So a listing cannot
+ * have its script counted as text somebody was kept from seeing by giving it a
+ * box, and the decision does not rest on the `display: none` the user-agent
+ * stylesheet happens to put on these elements.
+ */
+const NEVER_RENDERED = new Set(['script', 'style', 'noscript', 'template']);
+
+function isNeverRendered(element: Element): boolean {
+  return NEVER_RENDERED.has(element.localName);
 }
 
 function renderedText(element: Element): string {

@@ -147,6 +147,32 @@ describe('captureTab', () => {
     expect(await captureTab(TAB, NOW)).toBe('saved');
   });
 
+  /**
+   * The one capture with nothing to send. Not a judgement about what the page
+   * holds — it is the read itself that came back empty.
+   */
+  it('sends nothing for a page that read as blank, and keeps nothing', async () => {
+    await configure();
+    fake.pageRead = {
+      posting: {
+        url: 'https://jobs.example.com/vacancy/7781',
+        source_site: 'jobs.example.com',
+        page_text: '',
+        has_hidden_text: true,
+      },
+      characters: 0,
+      hiddenCharacters: 2_481,
+      hasJsonLd: false,
+    } satisfies PageRead;
+
+    const fetch = stubFetch(answer(201, { id: 12, status: 'captured' }));
+
+    expect(await captureTab(TAB, NOW)).toBe('page-blank');
+    expect(fetch).not.toHaveBeenCalled();
+    expect(await readQueue()).toHaveLength(0);
+    expect(fake.badge.text).toBe(messageFor('badgeRefused'));
+  });
+
   it('keeps a capture the backend never answered and shows the queue depth', async () => {
     await configure();
     stubFetch(new TypeError('Failed to fetch'));
