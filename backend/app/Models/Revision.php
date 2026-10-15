@@ -23,9 +23,16 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * The observer holds a complete revision immutable. No schema can express
  * that, since it is a rule about the value a column is moving away from.
  *
+ * `model` holds whichever of the two model names is true of the revision now:
+ * the model its request asked for while it is waiting for a result, because
+ * that is the name the result is priced from, and the model the provider
+ * reported once the output is stored, because that is the record of what
+ * actually ran.
+ *
  * @property-read int $id
  * @property-read int $posting_id
  * @property-read int $master_cv_version_id
+ * @property-read string $model
  * @property-read string $prompt_version
  * @property-read RevisionStatus $status
  * @property-read int $attempts

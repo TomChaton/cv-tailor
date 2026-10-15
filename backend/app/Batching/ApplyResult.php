@@ -6,6 +6,9 @@ use App\Generation\GenerationOutputIsUnusable;
 use App\Generation\StoreGenerationOutput;
 use App\Llm\BatchOutcome;
 use App\Llm\BatchResult;
+use App\Llm\CostCalculator;
+use App\Llm\LlmReply;
+use App\Llm\LlmResponse;
 use App\Models\LlmBatch;
 use App\Models\LlmBatchRevision;
 use App\Models\Revision;
@@ -22,11 +25,18 @@ use Illuminate\Contracts\Translation\Translator;
  * `pending` and went out again, and then the first batch's results arrived
  * after all. Keyed only on the custom ID, the old output would be written over
  * the revision's second life.
+ *
+ * **This is where a collected result is priced**, from the model the revision
+ * recorded when it was submitted. A batch result reports the build that served
+ * it, which may be a dated name of the alias that was asked for and is never
+ * what a rate is keyed by. This is the path the money is on, so a result
+ * priced from the provider's own name would misreport every batched revision.
  */
 class ApplyResult
 {
     public function __construct(
         private readonly StoreGenerationOutput $store,
+        private readonly CostCalculator $cost,
         private readonly BatchEvents $events,
         private readonly Translator $translator,
         private readonly int $attemptLimit,
@@ -53,13 +63,21 @@ class ApplyResult
             return;
         }
 
+        // Priced before the row is claimed. Pricing reads the model the
+        // revision was submitted with, and a model with no configured rate
+        // raises: raised here, the row is still `awaiting` and the result is
+        // applied in full once the rate is configured. Raised after the claim,
+        // the row would be resolved, its batch would close, and output that
+        // was paid for would be gone.
+        $response = $result->reply === null ? null : $this->price($revisionId, $result->reply);
+
         // Claiming the row is the guard. It is a conditional update rather
         // than a read and a write, so two runs holding the same result cannot
         // both pass it, and an outcome that is already recorded is a result
         // that has already been dealt with.
         //
-        // The row is claimed before the revision is looked at, because the
-        // outcome is a fact about the submission whatever the revision has
+        // The row is claimed before the revision's state is looked at, because
+        // the outcome is a fact about the submission whatever the revision has
         // since become. A row left `awaiting` would keep its batch open for
         // ever.
         $claimed = LlmBatchRevision::query()
@@ -88,23 +106,28 @@ class ApplyResult
         }
 
         match ($result->outcome) {
-            BatchOutcome::Succeeded => $this->succeeded($batch, $revision, $result),
+            BatchOutcome::Succeeded => $this->succeeded($batch, $revision, $response),
             BatchOutcome::Errored => $this->errored($batch, $revision, $result),
             BatchOutcome::Expired => $this->spend($batch, $revision, SubmissionOutcome::Expired, 'expired'),
             BatchOutcome::Canceled => $this->spend($batch, $revision, SubmissionOutcome::Canceled, 'canceled'),
         };
     }
 
-    private function succeeded(LlmBatch $batch, Revision $revision, BatchResult $result): void
+    /**
+     * @param  LlmResponse|null  $response  The result's reply, priced. Null
+     *                                      where there was no reply to price,
+     *                                      or no revision to price it from.
+     */
+    private function succeeded(LlmBatch $batch, Revision $revision, ?LlmResponse $response): void
     {
-        if ($result->response === null) {
+        if ($response === null) {
             $this->events->resultRejected($revision->id, $batch, 'the result carries no response');
 
             return;
         }
 
         try {
-            $this->store->handle($revision, $result->response);
+            $this->store->handle($revision, $response);
         } catch (GenerationOutputIsUnusable) {
             // A response that reached the token ceiling comes back cut off
             // mid-document. Nothing is stored, and the attempt is spent: the
@@ -134,6 +157,24 @@ class ApplyResult
         $revision->fill(['status' => RevisionStatus::Pending])->save();
 
         $this->events->requestInvalid($revision->id, $batch);
+    }
+
+    /**
+     * A reply priced against the model its revision asked for.
+     *
+     * The name is read straight off the revision rather than resolved from
+     * configuration again: it is what the request that produced this reply was
+     * built with, and configuration may have moved on since the batch went
+     * out. A revision that has gone prices nothing — the guards below drop the
+     * result.
+     */
+    private function price(int $revisionId, LlmReply $reply): ?LlmResponse
+    {
+        $requestedModel = Revision::query()->whereKey($revisionId)->value('model');
+
+        return is_string($requestedModel)
+            ? $this->cost->price($requestedModel, $reply, batched: true)
+            : null;
     }
 
     /**

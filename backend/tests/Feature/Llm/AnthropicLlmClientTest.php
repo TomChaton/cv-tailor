@@ -26,7 +26,18 @@ use Tests\TestCase;
 
 class AnthropicLlmClientTest extends TestCase
 {
+    /**
+     * The alias the application asks for, and the only name a rate is keyed
+     * by here.
+     */
     private const MODEL = 'claude-opus-5';
+
+    /**
+     * What the provider answers with: the dated build it resolved the alias
+     * to. Nothing is configured under this name, which is the point — a cost
+     * computed from it could only raise.
+     */
+    private const REPORTED = 'claude-opus-5-20260101';
 
     private function client(StubTransporter $transporter): AnthropicLlmClient
     {
@@ -74,7 +85,7 @@ class AnthropicLlmClientTest extends TestCase
             'id' => 'msg_01',
             'type' => 'message',
             'role' => 'assistant',
-            'model' => self::MODEL,
+            'model' => self::REPORTED,
             'content' => [
                 ['type' => 'thinking', 'thinking' => '', 'signature' => 'sig'],
                 ['type' => 'text', 'text' => $text, 'citations' => null],
@@ -141,7 +152,11 @@ class AnthropicLlmClientTest extends TestCase
 
         $response = $this->client($transporter)->complete($this->request());
 
-        $this->assertSame(self::MODEL, $response->model);
+        // Both names, and the cost computed from the requested one. Priced
+        // from the name the provider reported, this call would have raised:
+        // no rate is configured under it, and none ever could be.
+        $this->assertSame(self::MODEL, $response->requestedModel);
+        $this->assertSame(self::REPORTED, $response->reportedModel);
         $this->assertSame('the answer', $response->text);
         $this->assertSame('end_turn', $response->stopReason);
         $this->assertSame(1_000_000, $response->usage->inputTokens);
@@ -177,7 +192,8 @@ class AnthropicLlmClientTest extends TestCase
             fn (string $level, string $message, array $context): bool => $level === LogLevel::INFO
                 && $message === 'llm.request'
                 && $context['event'] === 'llm.request'
-                && $context['model'] === self::MODEL
+                && $context['requested_model'] === self::MODEL
+                && $context['reported_model'] === self::REPORTED
                 && $context['purpose'] === 'generation'
                 && $context['outcome'] === 'end_turn'
                 && $context['cost_micros'] === 40_500_000
@@ -230,7 +246,7 @@ class AnthropicLlmClientTest extends TestCase
             fn (string $level, string $message, array $context): bool => $message === 'llm.batch_submitted'
                 && $context['provider_batch_id'] === 'msgbatch_01'
                 && $context['request_count'] === 2
-                && $context['model'] === self::MODEL,
+                && $context['requested_model'] === self::MODEL,
         );
     }
 
@@ -285,8 +301,13 @@ class AnthropicLlmClientTest extends TestCase
 
         $succeeded = $this->resultFor($byCustomId, '41');
         $this->assertSame(BatchOutcome::Succeeded, $succeeded->outcome);
-        // Half the live cost: the batch API bills at the configured percentage.
-        $this->assertSame(20_250_000, $succeeded->response?->costMicros);
+        // A batch result comes back unpriced, carrying the build the provider
+        // says served it. The model its request asked for is recorded on the
+        // revision, so collection is what prices it.
+        $reply = $succeeded->reply;
+        $this->assertNotNull($reply);
+        $this->assertSame(self::REPORTED, $reply->reportedModel);
+        $this->assertSame(1_000_000, $reply->usage->inputTokens);
 
         $errored = $this->resultFor($byCustomId, '42');
         $this->assertSame(BatchOutcome::Errored, $errored->outcome);
@@ -317,7 +338,7 @@ class AnthropicLlmClientTest extends TestCase
         $log->shouldHaveReceived('log')->once()->withArgs(
             fn (string $level, string $message, array $context): bool => $level === LogLevel::WARNING
                 && $message === 'llm.failed'
-                && $context['model'] === self::MODEL
+                && $context['requested_model'] === self::MODEL
                 && $context['failure'] === 'rate_limit'
                 && $context['provider_request_id'] === 'req_stub_1',
         );

@@ -70,11 +70,28 @@ class FakeLlmClientTest extends TestCase
         $response = $this->fake()->willAnswerWith('faithfulness-supported')
             ->complete($this->request(LlmPurpose::Validation));
 
-        $this->assertSame('claude-haiku-4-5', $response->model);
+        $this->assertSame('claude-haiku-4-5', $response->requestedModel);
+        $this->assertSame('claude-haiku-4-5', $response->reportedModel);
         $this->assertStringContainsString('"supported":true', $response->text);
         $this->assertSame(190, $response->usage->inputTokens);
         $this->assertSame(24, $response->usage->outputTokens);
         $this->assertSame(310, $response->costMicros);
+    }
+
+    /**
+     * A recorded response may name a dated build of the alias that was asked
+     * for, as a real one does. The cost comes from the model the purpose is
+     * configured with, so a name nothing is configured under never reaches
+     * the rates.
+     */
+    public function test_a_response_reporting_a_dated_model_is_priced_from_the_one_that_was_asked_for(): void
+    {
+        $response = $this->fake()->willAnswerWith('extraction-dated-model')
+            ->complete($this->request(LlmPurpose::Extraction));
+
+        $this->assertSame('claude-haiku-4-5', $response->requestedModel);
+        $this->assertSame('claude-haiku-4-5-20251001', $response->reportedModel);
+        $this->assertSame(3_390, $response->costMicros);
     }
 
     public function test_it_records_what_it_was_asked(): void
@@ -115,9 +132,13 @@ class FakeLlmClientTest extends TestCase
 
         $succeeded = $this->resultFor($results, '41');
         $this->assertSame(BatchOutcome::Succeeded, $succeeded->outcome);
-        // Half the live cost: the fake prices a batched response like the real
-        // client does, from the same configured rates.
-        $this->assertSame(20_305, $succeeded->response?->costMicros);
+        // Unpriced, as from the real client: a batch result carries the model
+        // the provider reports, and the model its request asked for is
+        // recorded on the revision for collection to price it from.
+        $reply = $succeeded->reply;
+        $this->assertNotNull($reply);
+        $this->assertSame('claude-opus-5', $reply->reportedModel);
+        $this->assertSame(412, $reply->usage->inputTokens);
 
         $malformed = $this->resultFor($results, '42');
         $this->assertSame(BatchOutcome::Errored, $malformed->outcome);
@@ -171,7 +192,8 @@ class FakeLlmClientTest extends TestCase
         $log->shouldHaveReceived('log')->withArgs(
             fn (string $level, string $message, array $context): bool => $level === LogLevel::INFO
                 && $message === 'llm.request'
-                && $context['model'] === 'claude-opus-5'
+                && $context['requested_model'] === 'claude-opus-5'
+                && $context['reported_model'] === 'claude-opus-5'
                 && $context['purpose'] === 'generation'
                 && $context['outcome'] === 'end_turn'
                 && $context['cost_micros'] === 40_610
@@ -182,7 +204,7 @@ class FakeLlmClientTest extends TestCase
         $log->shouldHaveReceived('log')->withArgs(
             fn (string $level, string $message, array $context): bool => $level === LogLevel::WARNING
                 && $message === 'llm.failed'
-                && $context['model'] === 'claude-opus-5'
+                && $context['requested_model'] === 'claude-opus-5'
                 && $context['failure'] === 'server_error'
                 && $context['provider_request_id'] === 'req_fake',
         );

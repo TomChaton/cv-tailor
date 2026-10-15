@@ -8,19 +8,24 @@ namespace App\Llm;
  * The custom ID travels with the result because the provider returns results
  * in any order. Keying by position works right up until a batch holds more
  * than one request, which is the point at which it stops being testable.
+ *
+ * **A successful result carries an unpriced reply.** The cost has to be
+ * computed from the model the request asked for, and a batch's results say
+ * only which build served them; the requested model is recorded on the
+ * revision the result belongs to, so collection prices it from there.
  */
 final readonly class BatchResult
 {
     private function __construct(
         public string $customId,
         public BatchOutcome $outcome,
-        public ?LlmResponse $response = null,
+        public ?LlmReply $reply = null,
         public ?LlmFailureKind $failure = null,
     ) {}
 
-    public static function succeeded(string $customId, LlmResponse $response): self
+    public static function succeeded(string $customId, LlmReply $reply): self
     {
-        return new self($customId, BatchOutcome::Succeeded, response: $response);
+        return new self($customId, BatchOutcome::Succeeded, reply: $reply);
     }
 
     public static function errored(string $customId, LlmFailureKind $failure): self

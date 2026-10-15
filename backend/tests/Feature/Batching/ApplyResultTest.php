@@ -8,8 +8,9 @@ use App\Batching\SubmissionOutcome;
 use App\Jobs\ValidateGeneratedRevision;
 use App\Llm\BatchResult;
 use App\Llm\LlmFailureKind;
-use App\Llm\LlmResponse;
+use App\Llm\LlmReply;
 use App\Llm\TokenUsage;
+use App\Llm\UnknownModel;
 use App\Models\LlmBatch;
 use App\Models\LlmBatchRevision;
 use App\Models\Revision;
@@ -44,7 +45,7 @@ class ApplyResultTest extends TestCase
     {
         [$batch, $revision] = $this->submitted();
 
-        $this->apply()->handle($batch, BatchResult::succeeded((string) $revision->id, $this->response()));
+        $this->apply()->handle($batch, BatchResult::succeeded((string) $revision->id, $this->reply()));
 
         $stored = $revision->fresh();
 
@@ -62,6 +63,55 @@ class ApplyResultTest extends TestCase
     }
 
     /**
+     * The defect this guards against: the provider resolves the configured
+     * alias to a dated build, reports that name back, and nothing is
+     * configured under it. The price belongs to the name the request asked
+     * for, which the revision recorded when it was submitted.
+     */
+    public function test_a_result_is_priced_from_the_model_the_revision_was_submitted_with(): void
+    {
+        [$batch, $revision] = $this->submitted();
+
+        $this->apply()->handle($batch, BatchResult::succeeded((string) $revision->id, $this->reply()));
+
+        $stored = $revision->fresh();
+
+        $this->assertNotNull($stored);
+        // A million input and a million output tokens at the configured rates
+        // for the requested model, at the batch API's percentage of them.
+        // Priced from the reported name, this would have raised instead.
+        $this->assertSame(15_000_000, $stored->cost_micros);
+        // And the reported name is what the revision records, because it is
+        // the only account of what actually ran.
+        $this->assertSame('claude-opus-5-20260101', $stored->model);
+    }
+
+    /**
+     * The guard stays: a requested model with no configured rate raises rather
+     * than costing nothing. It raises before the submission row is claimed, so
+     * the result is still the batch's to apply once the rate is there — the
+     * alternative loses output that was paid for.
+     */
+    public function test_a_requested_model_with_no_rate_raises_and_leaves_the_result_to_be_applied(): void
+    {
+        [$batch, $revision] = $this->submitted();
+
+        Revision::query()->whereKey($revision->id)->update(['model' => 'claude-opus-5-20260101']);
+
+        try {
+            $this->apply()->handle($batch, BatchResult::succeeded((string) $revision->id, $this->reply()));
+
+            $this->fail('A model with no configured rate was priced anyway.');
+        } catch (UnknownModel $raised) {
+            $this->assertStringContainsString('claude-opus-5-20260101', $raised->getMessage());
+            $this->assertStringContainsString('cv.llm.rates', $raised->getMessage());
+        }
+
+        $this->assertSame(SubmissionOutcome::Awaiting, $this->submission($batch, $revision)->outcome);
+        $this->assertSame(RevisionStatus::Submitted, $revision->fresh()?->status);
+    }
+
+    /**
      * A response that reached the token ceiling comes back cut off. Nothing is
      * stored, and the attempt is spent.
      */
@@ -71,7 +121,7 @@ class ApplyResultTest extends TestCase
 
         $this->apply()->handle(
             $batch,
-            BatchResult::succeeded((string) $revision->id, $this->response('{"headline":"Backend Eng')),
+            BatchResult::succeeded((string) $revision->id, $this->reply('{"headline":"Backend Eng')),
         );
 
         $stored = $revision->fresh();
@@ -220,7 +270,7 @@ class ApplyResultTest extends TestCase
         Revision::query()->whereKey($revision->id)->update(['status' => RevisionStatus::Submitted]);
 
         // And now the first batch's output turns up.
-        $this->apply()->handle($expired, BatchResult::succeeded((string) $revision->id, $this->response()));
+        $this->apply()->handle($expired, BatchResult::succeeded((string) $revision->id, $this->reply()));
 
         $stored = $revision->fresh();
 
@@ -245,7 +295,7 @@ class ApplyResultTest extends TestCase
 
         $revision->fill(['status' => RevisionStatus::Validated])->save();
 
-        $this->apply()->handle($batch, BatchResult::succeeded((string) $revision->id, $this->response()));
+        $this->apply()->handle($batch, BatchResult::succeeded((string) $revision->id, $this->reply()));
 
         $this->assertNull($revision->fresh()?->output_json);
         $this->assertSame(RevisionStatus::Validated, $revision->fresh()?->status);
@@ -260,7 +310,7 @@ class ApplyResultTest extends TestCase
         $batch = LlmBatch::factory()->create();
         $revision = Revision::factory()->status(RevisionStatus::Submitted)->create();
 
-        $this->apply()->handle($batch, BatchResult::succeeded((string) $revision->id, $this->response()));
+        $this->apply()->handle($batch, BatchResult::succeeded((string) $revision->id, $this->reply()));
 
         $this->assertNull($revision->fresh()?->output_json);
         $this->assertSame('this batch carries no submission for the revision', $this->rejection());
@@ -319,19 +369,23 @@ class ApplyResultTest extends TestCase
             ->sole();
     }
 
-    private function response(string $text = '{"headline":"Backend Engineer"}'): LlmResponse
+    /**
+     * An unpriced reply, as a batch's results arrive. The model it reports is
+     * a dated build of the alias the request asked for, which is what the
+     * provider answers with and what nothing is configured under.
+     */
+    private function reply(string $text = '{"headline":"Backend Engineer"}'): LlmReply
     {
-        return new LlmResponse(
-            model: 'test-model',
+        return new LlmReply(
+            reportedModel: 'claude-opus-5-20260101',
             text: $text,
             stopReason: 'end_turn',
             usage: new TokenUsage(
-                inputTokens: 100,
-                outputTokens: 50,
+                inputTokens: 1_000_000,
+                outputTokens: 1_000_000,
                 cacheWriteTokens: 0,
                 cacheReadTokens: 0,
             ),
-            costMicros: 1000,
         );
     }
 

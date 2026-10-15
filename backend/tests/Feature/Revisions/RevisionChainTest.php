@@ -5,6 +5,7 @@ namespace Tests\Feature\Revisions;
 use App\Generation\StoreGenerationOutput;
 use App\Jobs\RenderValidatedRevision;
 use App\Jobs\ValidateGeneratedRevision;
+use App\Llm\LlmReply;
 use App\Llm\LlmResponse;
 use App\Llm\TokenUsage;
 use App\Models\MasterCvVersion;
@@ -298,16 +299,19 @@ class RevisionChainTest extends TestCase
      */
     private function response(array $selection): LlmResponse
     {
-        return new LlmResponse(
-            model: 'test-model',
-            text: (string) json_encode($selection, JSON_THROW_ON_ERROR),
-            stopReason: 'end_turn',
-            usage: new TokenUsage(
-                inputTokens: 412,
-                outputTokens: 286,
-                cacheWriteTokens: 0,
-                cacheReadTokens: 0,
+        return LlmResponse::priced(
+            new LlmReply(
+                reportedModel: 'claude-opus-5-20260101',
+                text: (string) json_encode($selection, JSON_THROW_ON_ERROR),
+                stopReason: 'end_turn',
+                usage: new TokenUsage(
+                    inputTokens: 412,
+                    outputTokens: 286,
+                    cacheWriteTokens: 0,
+                    cacheReadTokens: 0,
+                ),
             ),
+            requestedModel: 'claude-opus-5',
             costMicros: 2500,
         );
     }

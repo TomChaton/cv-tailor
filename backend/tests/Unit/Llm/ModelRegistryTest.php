@@ -20,6 +20,26 @@ class ModelRegistryTest extends TestCase
         $this->assertSame('small-model', $registry->for(LlmPurpose::Validation));
     }
 
+    /**
+     * Every purpose is reported, including one nothing is configured for: a
+     * purpose missing from the report cannot be told apart from one that has
+     * been renamed.
+     */
+    public function test_it_reports_what_every_purpose_is_configured_with(): void
+    {
+        $registry = new ModelRegistry([
+            'generation' => 'big-model',
+            'validation' => 'small-model',
+            'extraction' => '',
+        ]);
+
+        $this->assertSame([
+            'generation' => 'big-model',
+            'validation' => 'small-model',
+            'extraction' => null,
+        ], $registry->configured());
+    }
+
     public function test_a_purpose_with_no_configured_model_raises(): void
     {
         $this->expectException(UnknownModel::class);

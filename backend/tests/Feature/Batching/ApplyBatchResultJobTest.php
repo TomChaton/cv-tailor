@@ -6,7 +6,7 @@ use App\Batching\SubmissionOutcome;
 use App\Jobs\ApplyBatchResult;
 use App\Llm\BatchOutcome;
 use App\Llm\BatchResult;
-use App\Llm\LlmResponse;
+use App\Llm\LlmReply;
 use App\Llm\TokenUsage;
 use App\Models\LlmBatch;
 use App\Models\LlmBatchRevision;
@@ -26,8 +26,8 @@ class ApplyBatchResultJobTest extends TestCase
     public function test_a_result_survives_the_queue(): void
     {
         $batch = LlmBatch::factory()->create();
-        $job = new ApplyBatchResult($batch, BatchResult::succeeded('42', new LlmResponse(
-            model: 'test-model',
+        $job = new ApplyBatchResult($batch, BatchResult::succeeded('42', new LlmReply(
+            reportedModel: 'claude-opus-5-20260101',
             text: '{"headline":"Backend Engineer"}',
             stopReason: 'end_turn',
             usage: new TokenUsage(
@@ -36,7 +36,6 @@ class ApplyBatchResultJobTest extends TestCase
                 cacheWriteTokens: 0,
                 cacheReadTokens: 0,
             ),
-            costMicros: 1000,
         )));
 
         $restored = unserialize(serialize($job));
@@ -45,7 +44,7 @@ class ApplyBatchResultJobTest extends TestCase
         $this->assertSame($batch->id, $restored->batch->id);
         $this->assertSame('42', $restored->result->customId);
         $this->assertSame(BatchOutcome::Succeeded, $restored->result->outcome);
-        $this->assertSame('{"headline":"Backend Engineer"}', $restored->result->response?->text);
+        $this->assertSame('{"headline":"Backend Engineer"}', $restored->result->reply?->text);
     }
 
     public function test_the_job_applies_the_result(): void

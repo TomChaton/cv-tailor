@@ -5,6 +5,7 @@ namespace Tests\Feature\Generation;
 use App\Generation\GenerationOutputIsUnusable;
 use App\Generation\StoreGenerationOutput;
 use App\Jobs\ValidateGeneratedRevision;
+use App\Llm\LlmReply;
 use App\Llm\LlmResponse;
 use App\Llm\TokenUsage;
 use App\Models\Revision;
@@ -30,7 +31,7 @@ class StoreGenerationOutputTest extends TestCase
         Queue::fake([ValidateGeneratedRevision::class]);
     }
 
-    public function test_it_stores_the_selection_the_usage_and_the_model(): void
+    public function test_it_stores_the_selection_the_usage_and_the_model_the_provider_reported(): void
     {
         $revision = Revision::factory()->create();
 
@@ -40,7 +41,10 @@ class StoreGenerationOutputTest extends TestCase
 
         $this->assertNotNull($stored);
         $this->assertSame(['headline' => 'Platform Engineer'], $stored->output_json);
-        $this->assertSame('test-model', $stored->model);
+        // The reported model, not the requested one: this column is the record
+        // of what actually ran, and the cost beside it was computed from the
+        // name the request asked for.
+        $this->assertSame('claude-opus-5-20260101', $stored->model);
         $this->assertSame(RevisionStatus::Generated, $stored->status);
         $this->assertSame(412, $stored->input_tokens);
         $this->assertSame(286, $stored->output_tokens);
@@ -103,7 +107,8 @@ class StoreGenerationOutputTest extends TestCase
             ->once()
             ->with('generation.stored', Mockery::on(function (array $context) use ($revision): bool {
                 $this->assertSame($revision->id, $context['revision_id']);
-                $this->assertSame('test-model', $context['model']);
+                $this->assertSame('claude-opus-5', $context['requested_model']);
+                $this->assertSame('claude-opus-5-20260101', $context['reported_model']);
                 $this->assertSame($revision->prompt_version, $context['prompt_version']);
                 $this->assertGreaterThan(0, $context['output_chars']);
                 $this->assertSame(2500, $context['cost_micros']);
@@ -160,20 +165,27 @@ class StoreGenerationOutputTest extends TestCase
         }
     }
 
+    /**
+     * A priced response whose two model names differ, as a provider that
+     * resolved an alias to a dated build returns.
+     */
     private function response(
         string $text = '{"headline":"Platform Engineer"}',
         string $stopReason = 'end_turn',
     ): LlmResponse {
-        return new LlmResponse(
-            model: 'test-model',
-            text: $text,
-            stopReason: $stopReason,
-            usage: new TokenUsage(
-                inputTokens: 412,
-                outputTokens: 286,
-                cacheWriteTokens: 3140,
-                cacheReadTokens: 17,
+        return LlmResponse::priced(
+            new LlmReply(
+                reportedModel: 'claude-opus-5-20260101',
+                text: $text,
+                stopReason: $stopReason,
+                usage: new TokenUsage(
+                    inputTokens: 412,
+                    outputTokens: 286,
+                    cacheWriteTokens: 3140,
+                    cacheReadTokens: 17,
+                ),
             ),
+            requestedModel: 'claude-opus-5',
             costMicros: 2500,
         );
     }
