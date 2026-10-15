@@ -118,4 +118,17 @@ final readonly class PostingEvents
     {
         $this->log->warning('posting.rejected', ['fields' => $fields]);
     }
+
+    /**
+     * A warning: a capture refused before its body was read at all, so there
+     * are no fields to name and the reason is the whole of it.
+     *
+     * Nothing about the credential that was offered — not the token, not a
+     * prefix of it, not its length. A log line that carried any of those is a
+     * log line that cannot be pasted into a bug report.
+     */
+    public function refused(string $reason): void
+    {
+        $this->log->warning('posting.rejected', ['reason' => $reason]);
+    }
 }

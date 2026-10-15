@@ -221,12 +221,35 @@ describe('captureTab', () => {
     expect(queue[0]!.capture.asked_for).toBe('cv_and_cover_letter');
   });
 
+  /**
+   * The refusal is named rather than reported as the backend's own trouble,
+   * which is the whole difference between a capture the owner can act on and
+   * one that waits on somebody else. The capture is kept because the token is
+   * the thing the owner replaces.
+   */
   it('keeps a capture a rejected token stopped, because the token can be replaced', async () => {
     await configure();
     stubFetch(answer(401, { message: 'Unauthenticated.' }));
 
-    expect(await captureTab(TAB, 'save', NOW)).toBe('token-rejected');
+    const outcome = await captureTab(TAB, 'save', NOW);
+
+    expect(outcome).toBe('token-rejected');
+    expect(messageFor(messageKeyOf(outcome))).toBe('Token rejected');
     expect(await readQueue()).toHaveLength(1);
+  });
+
+  /**
+   * A 5xx is the backend's own to recover from and says nothing the owner can
+   * act on, so it is not the same answer as a refused token.
+   */
+  it('tells a refused token from a backend that broke', async () => {
+    await configure();
+    stubFetch(answer(500, { message: 'Server Error' }));
+
+    const outcome = await captureTab(TAB, 'save', NOW);
+
+    expect(outcome).toBe('backend-error');
+    expect(messageFor(messageKeyOf(outcome))).not.toBe('Token rejected');
   });
 
   it('drops a capture the backend will never accept', async () => {

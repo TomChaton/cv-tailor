@@ -9,6 +9,14 @@ use Illuminate\Http\JsonResponse;
 
 class CapturePostingController extends Controller
 {
+    /**
+     * Named here rather than only at the route, so the one other place that
+     * has to recognise a capture — the log line for a capture refused before
+     * this controller is reached — names the same route rather than a copy of
+     * its name.
+     */
+    public const ROUTE = 'api.v1.postings.capture';
+
     public function __construct(private readonly CapturePosting $capture) {}
 
     /**

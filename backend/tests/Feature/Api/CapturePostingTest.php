@@ -63,19 +63,104 @@ class CapturePostingTest extends TestCase
         Queue::fake([ExtractPostingFields::class]);
     }
 
-    public function test_a_capture_with_no_token_is_refused(): void
+    /**
+     * A refusal is answered as a refusal whatever the caller said it accepts.
+     * Laravel chooses between redirecting a browser to a login page and
+     * raising an authentication failure on exactly that, so a suite that only
+     * ever says `application/json` exercises one branch and the extension
+     * takes the other.
+     *
+     * @param  array<string, string>  $headers
+     */
+    #[DataProvider('headersARefusalIsAnsweredUnder')]
+    public function test_a_capture_with_no_token_is_refused(array $headers): void
     {
-        $this->postJson(self::URI, $this->payload())->assertUnauthorized();
+        $this->send($this->payload(), $headers)
+            ->assertUnauthorized()
+            ->assertHeader('Content-Type', 'application/json')
+            ->assertExactJson(['message' => 'Unauthenticated.']);
 
         $this->assertSame(0, Posting::count());
     }
 
-    public function test_a_capture_with_a_rejected_token_is_refused(): void
+    /**
+     * @param  array<string, string>  $headers
+     */
+    #[DataProvider('headersARefusalIsAnsweredUnder')]
+    public function test_a_capture_with_a_rejected_token_is_refused(array $headers): void
     {
-        $this->postJson(self::URI, $this->payload(), ['Authorization' => 'Bearer 1|nonsense'])
-            ->assertUnauthorized();
+        $this->send($this->payload(), ['Authorization' => 'Bearer 1|nonsense', ...$headers])
+            ->assertUnauthorized()
+            ->assertHeader('Content-Type', 'application/json')
+            ->assertExactJson(['message' => 'Unauthenticated.']);
 
         $this->assertSame(0, Posting::count());
+    }
+
+    /**
+     * The first case is the extension's own request and the one the suite was
+     * missing: the test harness supplies a browser's `Accept` unless it is
+     * given one, so an empty value is how a request that states nothing is
+     * expressed — either way the request offers no acceptable content type,
+     * which is what the framework reads.
+     *
+     * @return iterable<string, array{array<string, string>}>
+     */
+    public static function headersARefusalIsAnsweredUnder(): iterable
+    {
+        yield 'no Accept header' => [['Accept' => '']];
+        yield 'a browser Accept header' => [['Accept' => 'text/html,application/xhtml+xml,*/*;q=0.8']];
+        yield 'Accept: application/json' => [['Accept' => 'application/json']];
+    }
+
+    /**
+     * A token this instance does not hold is refused before the controller and
+     * the form request are reached, so without this line the side that refused
+     * the capture says nothing at all — and a token that was never pasted in
+     * looks exactly like a backend that is not answering.
+     */
+    public function test_it_warns_about_a_capture_refused_for_its_token_and_names_no_token_material(): void
+    {
+        $token = 'Bearer 1|'.str_repeat('z', 40);
+
+        /** @var EventLogger&MockInterface $logger */
+        $logger = Mockery::mock(EventLogger::class);
+        $logger->shouldReceive('warning')
+            ->once()
+            ->with('posting.rejected', ['reason' => 'authentication']);
+        $logger->shouldNotReceive('log');
+
+        $this->instance(EventLogger::class, $logger);
+
+        $this->send($this->payload(), ['Authorization' => $token])->assertUnauthorized();
+    }
+
+    /**
+     * An ordinary refusal is not an exception, and a log that reports it as one
+     * teaches the owner to skim the channel that has to stay worth reading.
+     */
+    public function test_a_rejected_token_is_not_reported_as_an_exception(): void
+    {
+        $log = Log::spy();
+
+        $this->send($this->payload())->assertUnauthorized();
+
+        $log->shouldNotHaveReceived('log', [Mockery::any(), 'exception.reported', Mockery::any()]);
+    }
+
+    /**
+     * A signed-out visit to the review UI is an authentication failure too, and
+     * it is not a capture.
+     */
+    public function test_a_signed_out_visit_to_the_review_ui_warns_about_no_capture(): void
+    {
+        /** @var EventLogger&MockInterface $logger */
+        $logger = Mockery::mock(EventLogger::class);
+        $logger->shouldNotReceive('warning');
+
+        $this->instance(EventLogger::class, $logger);
+
+        $this->get('/review')->assertRedirect('/review/login');
     }
 
     public function test_a_new_posting_answers_201_with_its_identity_and_nothing_else(): void
@@ -617,6 +702,31 @@ class CapturePostingTest extends TestCase
             self::URI,
             $payload ?? $this->payload(),
             ['Authorization' => 'Bearer '.$this->token],
+        );
+    }
+
+    /**
+     * The request the extension's own client makes, headers and all.
+     *
+     * Deliberately not `postJson`: that helper sets `Accept: application/json`
+     * whether the caller asked for it or not, and the header decides which
+     * branch the authentication middleware takes. A test that asserts a
+     * refusal has to send the headers the real client sends.
+     *
+     * @param  array<string, mixed>  $payload
+     * @param  array<string, string>  $headers
+     * @return TestResponse<Response>
+     */
+    private function send(array $payload, array $headers = []): TestResponse
+    {
+        return $this->call(
+            'POST',
+            self::URI,
+            [],
+            [],
+            [],
+            $this->transformHeadersToServerVars(['Content-Type' => 'application/json', ...$headers]),
+            (string) json_encode($payload),
         );
     }
 

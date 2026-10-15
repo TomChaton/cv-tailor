@@ -1758,6 +1758,16 @@ goes where it is told, which has to be somewhere writable, and
 
 ### Things that are easy to get wrong
 
+- **A test that asserts a refusal must send the headers the real client
+  sends.** `postJson` and the other JSON helpers set
+  `Accept: application/json` whether the caller asked for one or not, and that
+  header is what the authentication middleware chooses its branch on: with it,
+  a guest raises an authentication failure; without it, the guest is sent
+  wherever guests are configured to go. A suite built only from those helpers
+  therefore exercises one branch while every real request takes the other, and
+  it stays green while the endpoint answers nothing but a server error. Reach
+  for `call()` with the headers written out when the thing under test is how a
+  request is refused.
 - **A provider may answer about a different name than it was asked about.** An
   alias is resolved to a dated build and the response reports the build, so
   anything keyed on a model name has to be explicit about which of the two
