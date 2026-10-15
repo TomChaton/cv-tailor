@@ -47,6 +47,29 @@ a deliberate redesign, not an increment.
 Because the software is published, the repository contains no personal data.
 Tests and examples use a fictional master CV.
 
+**The only person using it is its owner, and that is an ordering decision
+rather than a statement about what the tool is for.** The owner knows the
+master CV format, the stack and the commands, so nothing is built *today* to
+teach a reader who does not: `cv:lint` and the in-app editor are a complete
+answer for somebody maintaining a document they wrote. The tools a stranger
+would need — reading a CV out of a document and being walked through making a
+master CV of it, and the rest of it — are a later piece of work, and the design
+intent recorded for them stands. Where the review UI is asked for a state the
+backend does not support, build the UI and record the request: the owner is
+the only person who sees it, and a recorded request is not a promise broken.
+
+Four things this does not relax, each there for the owner rather than for a
+stranger:
+
+- **The fabrication guarantee.** It is not about who runs the tool. It is
+  about what an employer reads.
+- **The personal data rules.** The repository is written to be published even
+  though the instance is not.
+- **Observability.** The owner is the one who has to diagnose it, with no
+  colleague and no second instance to compare against.
+- **Idiomatic Laravel.** The owner is learning the framework from this
+  codebase.
+
 ## Deployment
 
 **Docker Compose on a single host.** The reference host is an always-on Mac
