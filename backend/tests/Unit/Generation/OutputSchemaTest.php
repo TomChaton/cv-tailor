@@ -3,6 +3,8 @@
 namespace Tests\Unit\Generation;
 
 use App\Generation\OutputSchema;
+use App\Generation\RequirementPriority;
+use App\Generation\RequirementStatus;
 use App\Generation\SelectableIds;
 use PHPUnit\Framework\TestCase;
 use Tests\Concerns\MasterCvFixtures;
@@ -90,6 +92,25 @@ class OutputSchemaTest extends TestCase
     public function test_the_role_mode_enum_is_every_mode(): void
     {
         $this->assertSame(['full', 'condensed', 'omitted'], $this->enum('role_mode'));
+    }
+
+    /**
+     * A requirement's priority and status exist as PHP enums, and the schema
+     * is built from them, so the review screen and the model's answer cannot
+     * come to disagree about which values there are.
+     */
+    public function test_a_requirements_priority_and_status_come_from_their_enums(): void
+    {
+        $this->assertSame(
+            ['type' => 'string', 'enum' => RequirementPriority::values()],
+            $this->subArray($this->defs(), 'requirement', 'properties', 'priority'),
+        );
+        $this->assertSame(
+            ['type' => 'string', 'enum' => RequirementStatus::values()],
+            $this->subArray($this->defs(), 'requirement', 'properties', 'status'),
+        );
+        $this->assertSame(['must', 'nice'], RequirementPriority::values());
+        $this->assertSame(['met', 'partial', 'gap'], RequirementStatus::values());
     }
 
     /**

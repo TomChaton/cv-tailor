@@ -3,10 +3,12 @@
 namespace App\Filament\Resources\Postings;
 
 use App\Filament\Resources\Postings\Pages\ListPostings;
+use App\Filament\Resources\Postings\Pages\ViewPosting;
 use App\Models\Posting;
 use App\Postings\DiscardPosting;
 use App\Postings\MarkPostingWanted;
 use App\Postings\PostingStatus;
+use App\Rendering\PdfFilename;
 use App\Rendering\PdfStore;
 use BackedEnum;
 use Filament\Actions\Action;
@@ -19,7 +21,6 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -39,8 +40,9 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * `php artisan cv:status` is where the difference between that and a failed
  * extraction is visible.
  *
- * The resource has one page. Regenerating, editing and marking as applied
- * belong with the posting detail, which is a screen of its own.
+ * Regenerating and editing belong with the posting detail, which is a screen
+ * of its own: this list is for choosing which posting to spend a generation
+ * on, and the facts that belong to one posting are on that screen.
  */
 class PostingResource extends Resource
 {
@@ -165,6 +167,10 @@ class PostingResource extends Resource
     {
         return [
             'index' => ListPostings::route('/'),
+            // Registering a view page is also what makes a row clickable:
+            // Filament points a record at the resource's view page when there
+            // is one, so the list needs nothing adding to it to lead here.
+            'view' => ViewPosting::route('/{record}'),
         ];
     }
 
@@ -198,8 +204,11 @@ class PostingResource extends Resource
      *
      * Offered on a captured posting and on nothing else: every later state
      * already has a revision or is the owner's own verdict on one.
+     *
+     * The list and the posting's own screen both offer it, from here, so the
+     * rule it is offered under exists once.
      */
-    private static function wantAction(): Action
+    public static function wantAction(): Action
     {
         return Action::make('want')
             ->label(__('postings.actions.want'))
@@ -224,8 +233,10 @@ class PostingResource extends Resource
      * adds an "are you sure" paragraph that cannot be turned off and that the
      * heading has already said, so the modal is raised by its heading — which
      * is what opens one — and dressed as the confirmation it is.
+     *
+     * The list and the posting's own screen both offer it, from here.
      */
-    private static function discardAction(): Action
+    public static function discardAction(): Action
     {
         return Action::make('discard')
             ->label(__('postings.actions.discard'))
@@ -248,15 +259,22 @@ class PostingResource extends Resource
      * exists — a render that failed deliberately leaves the column alone. The
      * null return is for a volume that has been replaced under a path that
      * still names a file.
+     *
+     * The posting's own screen embeds the PDF and offers this as well: reading
+     * one and keeping one are different things.
      */
-    private static function downloadAction(): Action
+    public static function downloadAction(): Action
     {
         return Action::make('download')
             ->label(__('postings.actions.download'))
             ->icon(Heroicon::ArrowDownTray)
             ->button()
             ->visible(fn (Posting $record): bool => $record->currentRevision?->pdf_path !== null)
-            ->action(function (Posting $record, PdfStore $pdfs): ?StreamedResponse {
+            ->action(function (
+                Posting $record,
+                PdfStore $pdfs,
+                PdfFilename $filenames,
+            ): ?StreamedResponse {
                 $revision = $record->currentRevision;
                 $pdf = $revision === null ? null : $pdfs->read($revision);
 
@@ -266,34 +284,13 @@ class PostingResource extends Resource
 
                 return response()->streamDownload(
                     fn () => print $pdf,
-                    self::downloadFilename($record),
+                    $filenames->for($record),
                     ['Content-Type' => 'application/pdf'],
                 );
             });
     }
 
-    /**
-     * The name the file reaches an employer under, so it is named for the job
-     * and not for the row: a posting's id means nothing to anybody outside
-     * this database.
-     *
-     * Nothing guesses a company, so a posting without one is ordinary and must
-     * still download — under the posting's id, which is the only other thing
-     * that tells two files apart. A company whose name is all punctuation slugs
-     * to nothing and takes the same route.
-     */
-    private static function downloadFilename(Posting $posting): string
-    {
-        $company = Str::slug((string) $posting->company);
-
-        if ($company === '') {
-            return (string) __('postings.pdf_filename', ['posting' => $posting->id]);
-        }
-
-        return (string) __('postings.pdf_filename_for_company', ['company' => $company]);
-    }
-
-    private static function statusLabel(PostingStatus $status): string
+    public static function statusLabel(PostingStatus $status): string
     {
         return (string) __('postings.statuses.'.$status->value);
     }

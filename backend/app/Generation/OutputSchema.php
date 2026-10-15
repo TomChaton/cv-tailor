@@ -145,8 +145,8 @@ final readonly class OutputSchema
                         'type' => 'string',
                         'description' => 'The requirement as the job description states it.',
                     ],
-                    'priority' => ['type' => 'string', 'enum' => ['must', 'nice']],
-                    'status' => ['type' => 'string', 'enum' => ['met', 'partial', 'gap']],
+                    'priority' => self::enum(RequirementPriority::values()),
+                    'status' => self::enum(RequirementStatus::values()),
                     'evidence' => self::listOf(
                         self::ANY_ID,
                         'The master CV IDs that evidence it. Empty for a gap.',
