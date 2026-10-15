@@ -13,6 +13,7 @@ use Filament\Actions\Testing\TestAction;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\SelectFilter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
@@ -45,19 +46,28 @@ class PostingsListTest extends TestCase
             ->assertSee(PostingResource::getUrl());
     }
 
-    public function test_it_lists_every_posting_whatever_its_status(): void
+    /**
+     * Capture is free and speculative, so `discarded` is the status that
+     * accumulates. Every other one is live work or the record of work.
+     */
+    public function test_it_opens_on_every_posting_but_the_discarded_ones(): void
     {
         $this->signIn();
 
-        $postings = [];
+        $ofInterest = [];
 
         foreach (PostingStatus::cases() as $status) {
-            $postings[] = Posting::factory()->status($status)->create();
+            if ($status !== PostingStatus::Discarded) {
+                $ofInterest[] = Posting::factory()->status($status)->create();
+            }
         }
 
+        $discarded = Posting::factory()->status(PostingStatus::Discarded)->create();
+
         Livewire::test(ListPostings::class)
-            ->assertCanSeeTableRecords($postings)
-            ->assertCountTableRecords(count($postings));
+            ->assertCanSeeTableRecords($ofInterest)
+            ->assertCanNotSeeTableRecords([$discarded])
+            ->assertCountTableRecords(count($ofInterest));
     }
 
     public function test_the_newest_posting_is_first(): void
@@ -90,6 +100,74 @@ class PostingsListTest extends TestCase
             ->assertTableColumnStateSet('location', 'Leeds', $posting)
             ->assertTableColumnStateSet('salary_text', '£90,000', $posting)
             ->assertTableColumnStateSet('source_site', 'example-board.test', $posting);
+    }
+
+    /**
+     * Deciding about a posting means reading the advert again, and the owner
+     * must not lose their place in the list doing it.
+     */
+    public function test_the_title_links_out_to_the_posting_in_a_new_tab(): void
+    {
+        $this->signIn();
+
+        $posting = Posting::factory()->create(['url' => 'https://example-board.test/jobs/1']);
+
+        Livewire::test(ListPostings::class)
+            ->assertTableColumnExists(
+                'title',
+                fn (TextColumn $column): bool => $column->getUrl() === 'https://example-board.test/jobs/1'
+                    && $column->shouldOpenUrlInNewTab(),
+                $posting,
+            )
+            // The anchor and its target are Filament's, not a template's.
+            ->assertSeeHtml('href="https://example-board.test/jobs/1" target="_blank"');
+    }
+
+    /**
+     * A posting the capture could not name still has to be reachable, and the
+     * title is the cell a reader reaches for first.
+     */
+    public function test_the_source_links_out_to_the_posting_on_every_row(): void
+    {
+        $this->signIn();
+
+        $named = Posting::factory()->create(['url' => 'https://example-board.test/jobs/1']);
+        $unnamed = Posting::factory()
+            ->awaitingExtraction()
+            ->create(['url' => 'https://example-board.test/jobs/2']);
+
+        Livewire::test(ListPostings::class)
+            ->assertTableColumnExists(
+                'source_site',
+                fn (TextColumn $column): bool => $column->getUrl() === 'https://example-board.test/jobs/1'
+                    && $column->shouldOpenUrlInNewTab(),
+                $named,
+            )
+            ->assertTableColumnExists(
+                'source_site',
+                fn (TextColumn $column): bool => $column->getUrl() === 'https://example-board.test/jobs/2'
+                    && $column->shouldOpenUrlInNewTab(),
+                $unnamed,
+            );
+    }
+
+    /**
+     * The absent placeholder stays a placeholder and does not become a link to
+     * nowhere.
+     */
+    public function test_a_posting_the_capture_could_not_name_carries_no_link_on_its_title(): void
+    {
+        $this->signIn();
+
+        $posting = Posting::factory()->awaitingExtraction()->create();
+
+        Livewire::test(ListPostings::class)
+            ->assertTableColumnExists(
+                'title',
+                fn (TextColumn $column): bool => $column->getUrl() === null,
+                $posting,
+            )
+            ->assertSee(__('postings.absent'));
     }
 
     /**
@@ -231,6 +309,144 @@ class PostingsListTest extends TestCase
             ->assertCanNotSeeTableRecords([$captured]);
     }
 
+    /**
+     * A reader who wants discarded postings asks for them, and the list has
+     * nothing to say about why they were not there to begin with.
+     */
+    public function test_selecting_discarded_shows_the_discarded_postings(): void
+    {
+        $this->signIn();
+
+        $discarded = Posting::factory()->status(PostingStatus::Discarded)->create();
+        $captured = Posting::factory()->create();
+
+        Livewire::test(ListPostings::class)
+            ->filterTable('status', [PostingStatus::Discarded->value])
+            ->assertCanSeeTableRecords([$discarded])
+            ->assertCanNotSeeTableRecords([$captured]);
+    }
+
+    public function test_selecting_two_statuses_shows_both_and_nothing_else(): void
+    {
+        $this->signIn();
+
+        $wanted = Posting::factory()->wanted()->create();
+        $applied = Posting::factory()->status(PostingStatus::Applied)->create();
+        $captured = Posting::factory()->create();
+
+        Livewire::test(ListPostings::class)
+            ->filterTable('status', [PostingStatus::Wanted->value, PostingStatus::Applied->value])
+            ->assertCanSeeTableRecords([$wanted, $applied])
+            ->assertCanNotSeeTableRecords([$captured])
+            ->assertCountTableRecords(2);
+    }
+
+    public function test_clearing_the_status_filter_shows_every_posting(): void
+    {
+        $this->signIn();
+
+        $discarded = Posting::factory()->status(PostingStatus::Discarded)->create();
+        $captured = Posting::factory()->create();
+
+        Livewire::test(ListPostings::class)
+            ->filterTable('status', [])
+            ->assertCanSeeTableRecords([$captured, $discarded])
+            ->assertCountTableRecords(2);
+    }
+
+    /**
+     * The default is a selection, so the indicator the filter puts on the list
+     * carries its own control: what the list is doing is on screen and one
+     * click undoes it.
+     */
+    public function test_removing_the_status_indicator_shows_every_posting(): void
+    {
+        $this->signIn();
+
+        $discarded = Posting::factory()->status(PostingStatus::Discarded)->create();
+        $captured = Posting::factory()->create();
+
+        Livewire::test(ListPostings::class)
+            ->assertCanNotSeeTableRecords([$discarded])
+            ->removeTableFilter('status')
+            ->assertCanSeeTableRecords([$captured, $discarded])
+            ->assertCountTableRecords(2);
+    }
+
+    /**
+     * What the list is doing is on the screen: the selection it opened on is
+     * named, so nothing has to explain why discarded postings are not there.
+     */
+    public function test_the_list_names_the_statuses_it_opened_on(): void
+    {
+        $this->signIn();
+
+        Posting::factory()->create();
+
+        $labels = [];
+
+        foreach (PostingStatus::cases() as $status) {
+            if ($status !== PostingStatus::Discarded) {
+                $labels[] = __('postings.statuses.'.$status->value);
+            }
+        }
+
+        Livewire::test(ListPostings::class)
+            ->assertSee(__('postings.columns.status').': '.collect($labels)->join(', ', ' & '));
+    }
+
+    public function test_the_status_filter_takes_more_than_one_status(): void
+    {
+        $this->signIn();
+
+        Livewire::test(ListPostings::class)
+            ->assertTableFilterExists('status', fn (SelectFilter $filter): bool => $filter->isMultiple());
+    }
+
+    /**
+     * Derived from the enum, so a status added to the machine is a status the
+     * filter offers without this being edited.
+     */
+    public function test_the_status_filter_offers_every_case_of_the_enum(): void
+    {
+        $this->signIn();
+
+        $options = [];
+
+        foreach (PostingStatus::cases() as $status) {
+            $options[$status->value] = __('postings.statuses.'.$status->value);
+        }
+
+        Livewire::test(ListPostings::class)
+            ->assertTableFilterExists(
+                'status',
+                fn (SelectFilter $filter): bool => $filter->getOptions() === $options,
+            );
+    }
+
+    /**
+     * And the opening selection is derived from it too: a status added later
+     * is one the list opens on.
+     */
+    public function test_the_status_filter_opens_on_every_case_of_the_enum_but_discarded(): void
+    {
+        $this->signIn();
+
+        $expected = [];
+
+        foreach (PostingStatus::cases() as $status) {
+            if ($status !== PostingStatus::Discarded) {
+                $expected[] = $status->value;
+            }
+        }
+
+        Livewire::test(ListPostings::class)
+            ->assertTableFilterExists(
+                'status',
+                fn (SelectFilter $filter): bool => $filter->getDefaultState() === $expected,
+            );
+    }
+
     public function test_filtering_by_source_narrows_the_list(): void
     {
         $this->signIn();
@@ -242,6 +458,54 @@ class PostingsListTest extends TestCase
             ->filterTable('source_site', 'one-board.test')
             ->assertCanSeeTableRecords([$here])
             ->assertCanNotSeeTableRecords([$elsewhere]);
+    }
+
+    public function test_the_source_filter_takes_more_than_one_site(): void
+    {
+        $this->signIn();
+
+        $here = Posting::factory()->create(['source_site' => 'one-board.test']);
+        $alsoHere = Posting::factory()->create(['source_site' => 'other-board.test']);
+        $elsewhere = Posting::factory()->create(['source_site' => 'third-board.test']);
+
+        Livewire::test(ListPostings::class)
+            ->assertTableFilterExists('source_site', fn (SelectFilter $filter): bool => $filter->isMultiple())
+            ->filterTable('source_site', ['one-board.test', 'other-board.test'])
+            ->assertCanSeeTableRecords([$here, $alsoHere])
+            ->assertCanNotSeeTableRecords([$elsewhere]);
+    }
+
+    /**
+     * The sites the owner has actually captured from, rather than a list of
+     * boards held somewhere in configuration.
+     */
+    public function test_the_source_filter_lists_only_sites_that_have_been_captured_from(): void
+    {
+        $this->signIn();
+
+        Posting::factory()->create(['source_site' => 'one-board.test']);
+        Posting::factory()->create(['source_site' => 'one-board.test']);
+
+        Livewire::test(ListPostings::class)
+            ->assertTableFilterExists(
+                'source_site',
+                fn (SelectFilter $filter): bool => $filter->getOptions() === ['one-board.test' => 'one-board.test'],
+            );
+    }
+
+    public function test_the_source_filter_has_no_default(): void
+    {
+        $this->signIn();
+
+        Posting::factory()->create(['source_site' => 'one-board.test']);
+        $elsewhere = Posting::factory()->create(['source_site' => 'other-board.test']);
+
+        Livewire::test(ListPostings::class)
+            ->assertTableFilterExists(
+                'source_site',
+                fn (SelectFilter $filter): bool => blank($filter->getDefaultState()),
+            )
+            ->assertCanSeeTableRecords([$elsewhere]);
     }
 
     public function test_marking_a_posting_wanted_is_offered_on_a_captured_posting(): void

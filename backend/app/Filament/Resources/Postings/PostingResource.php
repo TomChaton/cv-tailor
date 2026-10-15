@@ -79,9 +79,18 @@ class PostingResource extends Resource
             // postings captured in the same second still order by capture.
             ->defaultSort('created_at', 'desc')
             ->columns([
+                // Out to the advert, in a new tab: the owner is working
+                // through a list and deciding, and deciding means reading the
+                // page again. A posting the capture could not name has no
+                // text to hang a link on, so the placeholder stays a
+                // placeholder — the source column is that row's way out.
                 TextColumn::make('title')
                     ->label(__('postings.columns.title'))
                     ->placeholder(__('postings.absent'))
+                    ->url(
+                        fn (Posting $record): ?string => $record->title === null ? null : $record->url,
+                        shouldOpenInNewTab: true,
+                    )
                     ->wrap(),
                 TextColumn::make('company')
                     ->label(__('postings.columns.company'))
@@ -92,8 +101,11 @@ class PostingResource extends Resource
                 TextColumn::make('salary_text')
                     ->label(__('postings.columns.salary'))
                     ->placeholder(__('postings.absent')),
+                // Every row's way out to the page, whatever extraction made of
+                // it: `url` is the one thing every capture carries.
                 TextColumn::make('source_site')
-                    ->label(__('postings.columns.source')),
+                    ->label(__('postings.columns.source'))
+                    ->url(fn (Posting $record): string => $record->url, shouldOpenInNewTab: true),
                 TextColumn::make('created_at')
                     ->label(__('postings.columns.captured'))
                     ->dateTime('j M Y, H:i')
@@ -124,11 +136,29 @@ class PostingResource extends Resource
                     ->color('warning'),
             ])
             ->filters([
+                // The list opens on everything but `discarded`, stated as a
+                // selection rather than as a rule hidden in the query: the
+                // filter shows what it is doing and the indicator's own
+                // control undoes it, so a discarded posting is one click away
+                // rather than gone.
                 SelectFilter::make('status')
                     ->label(__('postings.columns.status'))
-                    ->options(fn (): array => self::statusOptions()),
+                    ->multiple()
+                    ->options(fn (): array => self::statusOptions())
+                    ->default(fn (): array => self::statusesOfInterest())
+                    // Filament resolves the record an action was clicked on
+                    // through the filtered query, so a status the selection
+                    // excludes is a row whose own actions refuse to run. The
+                    // actions here are what *move* a posting's status: the
+                    // row the owner just discarded is still on screen until
+                    // the table re-renders, and asking it for its CV in that
+                    // moment must not fail. Which postings the list answers
+                    // with is the filter's question; which posting an action
+                    // acts on is the row's.
+                    ->excludeWhenResolvingRecord(),
                 SelectFilter::make('source_site')
                     ->label(__('postings.columns.source'))
+                    ->multiple()
                     // The sites the owner has actually captured from, rather
                     // than a list of boards held somewhere in configuration.
                     ->options(fn (): array => Posting::query()
@@ -271,5 +301,30 @@ class PostingResource extends Resource
         }
 
         return $options;
+    }
+
+    /**
+     * Every status the list opens on: all of them but `discarded`.
+     *
+     * Capture is free and speculative, so `discarded` is the status that
+     * accumulates, and it is the only one that is uninteresting on its own —
+     * everything else is live work or the record of work, and an applied
+     * posting is the thing the system exists to produce. Derived from the enum
+     * for the same reason the options are, so a status added later is one the
+     * list opens on without this being edited.
+     *
+     * @return list<string>
+     */
+    private static function statusesOfInterest(): array
+    {
+        $statuses = [];
+
+        foreach (PostingStatus::cases() as $status) {
+            if ($status !== PostingStatus::Discarded) {
+                $statuses[] = $status->value;
+            }
+        }
+
+        return $statuses;
     }
 }

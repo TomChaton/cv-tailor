@@ -1437,10 +1437,37 @@ assembled from schema components, which carry the styles that exist.
 
 ### The postings list
 
-Everything captured, newest first, and the decision the owner takes about each
-one. It is the surface the gate exists for: a posting is marked as wanted here
-or it is never generated from.
+Everything of interest, newest first, and the decision the owner takes about
+each one. It is the surface the gate exists for: a posting is marked as wanted
+here or it is never generated from.
 
+- **The list opens on every status but `discarded`.** Capture is free and
+  speculative, so `discarded` is the status that accumulates — a posting is
+  discarded on sight, and that is the point of capturing freely — and it is
+  the only status that is uninteresting on its own. Everything else is live
+  work or the record of work, and an applied posting is the thing the system
+  exists to produce.
+- **That default is a filter selection, not a hidden rule.** Stating it as a
+  selection is what makes it visible and removable: the filter says what it is
+  doing and its indicator's own control undoes it, so a discarded posting is
+  one click away rather than gone. A narrowed base query would hide the
+  decision, and a "hide discarded" toggle would be a second idiom for the same
+  thing. Both the options and the opening selection derive from
+  `PostingStatus`, so a status added to the machine is offered and opened on
+  without the list being edited.
+- **The filters take more than one value each**, status and source alike. Two
+  filters that behaved differently for no reason would be worse than two that
+  behave the same, and the source filter has no default because every site
+  captured from is a site worth seeing.
+- **Both the title and the source link out to the posting.** A posting is a
+  thing that exists somewhere else, and deciding about it usually means
+  reading the advert again; retyping a search for a page whose URL the system
+  holds is the friction that stops a list being used. The title is the cell a
+  reader reaches for first, and the source links as well because a posting
+  whose title extraction never found still has to be reachable — `url` is the
+  one field every capture carries. Both open in a new tab: the owner is
+  working through a list and must not lose their place in it. The absent
+  placeholder stays a placeholder rather than becoming a link to nowhere.
 - **A field neither the page nor extraction gave shows as absent**, not as an
   empty cell. Neither source guesses, and a blank cell cannot be told from a
   value that is blank — so a list that printed one would hand the owner a fact
@@ -1750,6 +1777,17 @@ goes where it is told, which has to be somewhere writable, and
   changes therefore renders the value from before it, and the page looks as
   though the action did nothing. Anything on a page that an action alters is
   passed as a closure, which is evaluated at render time.
+- **A table filter decides which records that table's actions can act on.**
+  Filament resolves the record an action was clicked on through the filtered
+  query, so a row the filter excludes is a row whose actions refuse to run —
+  `Record [n] no longer exists`. It bites where a filter has a default, since
+  the records it excludes are ones nobody chose to exclude, and it bites
+  hardest where the actions are what *move* a record out of the selection: the
+  row the owner just acted on is still on screen until the table re-renders.
+  A filter that hides a class of record rather than answering a question about
+  the list is therefore marked `excludeWhenResolvingRecord()`, which is what
+  Filament's own soft-delete filter does. Which records the list answers with
+  is the filter's question; which record an action acts on is the row's.
 - **A route memoises the controller it resolved**, and a route lives as long as
   the application does. So a test that swaps a binding *between* two requests
   is served the second time by the instance the first request built, and the
