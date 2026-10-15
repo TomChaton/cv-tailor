@@ -22,13 +22,15 @@ return [
 
     'columns' => [
         'title' => 'Title',
-        'company' => 'Company',
-        'location' => 'Location',
-        'salary' => 'Salary',
         'source' => 'Source',
         'captured' => 'Captured',
         'status' => 'Status',
     ],
+
+    // Between the facts that qualify a title on the list — the company, the
+    // location and the salary. Punctuation a person reads, so it lives here
+    // and not in the resource.
+    'qualifier_separator' => ' · ',
 
     'statuses' => [
         'captured' => 'Captured',

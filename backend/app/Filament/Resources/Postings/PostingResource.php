@@ -13,11 +13,8 @@ use Filament\Actions\Action;
 use Filament\Resources\Pages\PageRegistration;
 use Filament\Resources\Resource;
 use Filament\Support\Enums\Alignment;
-use Filament\Support\Enums\FontWeight;
 use Filament\Support\Enums\Width;
 use Filament\Support\Icons\Heroicon;
-use Filament\Tables\Columns\Layout\Split;
-use Filament\Tables\Columns\Layout\Stack;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
@@ -33,11 +30,14 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * until it is marked `wanted`, and nothing on a schedule moves it: `cv:queue`
  * sweeps `wanted` and never `captured`.
  *
- * A listed field neither the page nor extraction gave shows as absent. Neither
- * source guesses, and a list that printed an empty cell instead would undo that
- * — a blank cell cannot be told from a value that is blank. A posting still
- * awaiting extraction reads the same way, and `php artisan cv:status` is where
- * the difference is visible.
+ * A posting is identified by its title, with the facts that qualify it on a
+ * line beneath. A title neither the page nor extraction gave shows as absent:
+ * neither source guesses, and a cell printed empty would undo that, because a
+ * blank cell cannot be told from a value that is blank. A qualifying fact the
+ * capture did not find is left out of its line instead. So a posting still
+ * awaiting extraction is a placeholder and no line at all, and
+ * `php artisan cv:status` is where the difference between that and a failed
+ * extraction is visible.
  *
  * The resource has one page. Regenerating, editing and marking as applied
  * belong with the posting detail, which is a screen of its own.
@@ -80,61 +80,44 @@ class PostingResource extends Resource
             // Newest first. Filament adds the key as a tiebreaker, so two
             // postings captured in the same second still order by capture.
             ->defaultSort('created_at', 'desc')
-            // A laid-out row has no headings to sort from, so Filament offers
-            // a sort control instead. Its first option is the table's own
-            // order, which is by capture, and naming it says so.
-            ->defaultSortOptionLabel(__('postings.columns.captured'))
             ->columns([
-                // One cell per posting, read downwards. Filament's own layout
-                // components are what stack a cell — the review UI has no
-                // utility classes to reach for — and a table handed one lays
-                // every row out as content rather than as cells, which is why
-                // the remaining fields sit in a split beside the stack and
-                // carry no heading of their own.
-                Split::make([
-                    Stack::make([
-                        // Out to the advert, in a new tab: the owner is
-                        // working through a list and deciding, and deciding
-                        // means reading the page again. A posting the capture
-                        // could not name has no text to hang a link on, so
-                        // the placeholder stays a placeholder — the source
-                        // is that row's way out.
-                        TextColumn::make('title')
-                            ->label(__('postings.columns.title'))
-                            ->placeholder(__('postings.absent'))
-                            // The title is what a reader looks for; the
-                            // company and location qualify it.
-                            ->weight(FontWeight::Bold)
-                            ->url(
-                                fn (Posting $record): ?string => $record->title === null ? null : $record->url,
-                                shouldOpenInNewTab: true,
-                            )
-                            ->wrap(),
-                        TextColumn::make('company')
-                            ->label(__('postings.columns.company'))
-                            ->placeholder(__('postings.absent')),
-                        TextColumn::make('location')
-                            ->label(__('postings.columns.location'))
-                            ->placeholder(__('postings.absent')),
-                    ])->space(1),
-                    TextColumn::make('salary_text')
-                        ->label(__('postings.columns.salary'))
-                        ->placeholder(__('postings.absent')),
-                    // Every row's way out to the page, whatever extraction
-                    // made of it: `url` is the one thing every capture
-                    // carries.
-                    TextColumn::make('source_site')
-                        ->label(__('postings.columns.source'))
-                        ->url(fn (Posting $record): string => $record->url, shouldOpenInNewTab: true),
-                    TextColumn::make('created_at')
-                        ->label(__('postings.columns.captured'))
-                        ->dateTime('j M Y, H:i')
-                        ->sortable(),
-                    TextColumn::make('status')
-                        ->label(__('postings.columns.status'))
-                        ->badge()
-                        ->formatStateUsing(fn (PostingStatus $state): string => self::statusLabel($state)),
-                ]),
+                // A posting is identified by its title, with the facts that
+                // qualify it on a line beneath. That line is the column's own
+                // description rather than a layout component, because a
+                // layout component in `columns()` costs the whole list its
+                // table: no headings and no click-to-sort, which is what a
+                // reader uses to read a list down.
+                TextColumn::make('title')
+                    ->label(__('postings.columns.title'))
+                    ->placeholder(__('postings.absent'))
+                    // Out to the advert, in a new tab: the owner is working
+                    // through a list and deciding, and deciding means reading
+                    // the page again. A posting the capture could not name
+                    // has no text to hang a link on, so the placeholder stays
+                    // a placeholder — the source column is that row's way out.
+                    ->url(
+                        fn (Posting $record): ?string => $record->title === null ? null : $record->url,
+                        shouldOpenInNewTab: true,
+                    )
+                    ->description(
+                        fn (Posting $record): ?string => self::qualifiers($record),
+                        position: 'below',
+                    )
+                    ->sortable()
+                    ->wrap(),
+                // Every row's way out to the page, whatever extraction made of
+                // it: `url` is the one thing every capture carries.
+                TextColumn::make('source_site')
+                    ->label(__('postings.columns.source'))
+                    ->url(fn (Posting $record): string => $record->url, shouldOpenInNewTab: true),
+                TextColumn::make('created_at')
+                    ->label(__('postings.columns.captured'))
+                    ->dateTime('j M Y, H:i')
+                    ->sortable(),
+                TextColumn::make('status')
+                    ->label(__('postings.columns.status'))
+                    ->badge()
+                    ->formatStateUsing(fn (PostingStatus $state): string => self::statusLabel($state)),
             ])
             ->filters([
                 // The list opens on everything but `discarded`, stated as a
@@ -183,6 +166,31 @@ class PostingResource extends Resource
         return [
             'index' => ListPostings::route('/'),
         ];
+    }
+
+    /**
+     * The facts that qualify a title, on one line under it: who is hiring,
+     * where, and what it pays. Each is a reason to open a posting or to pass
+     * over it, so they belong where the owner is choosing — and a line costs
+     * none of the width three more columns would.
+     *
+     * A field the capture did not find is left out of the line rather than
+     * placeheld: a line of dashes is noise, and the line already says what is
+     * known. The title keeps its own placeholder, because that is the
+     * column's value rather than a part of this line.
+     */
+    private static function qualifiers(Posting $posting): ?string
+    {
+        $known = array_filter(
+            [$posting->company, $posting->location, $posting->salary_text],
+            fn (?string $value): bool => filled($value),
+        );
+
+        if ($known === []) {
+            return null;
+        }
+
+        return implode((string) __('postings.qualifier_separator'), $known);
     }
 
     /**

@@ -11,8 +11,6 @@ use App\Postings\PostingStatus;
 use App\Revisions\RevisionStatus;
 use Filament\Actions\Action;
 use Filament\Actions\Testing\TestAction;
-use Filament\Tables\Columns\Layout\Split;
-use Filament\Tables\Columns\Layout\Stack;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
@@ -96,12 +94,16 @@ class PostingsListTest extends TestCase
             'source_site' => 'example-board.test',
         ]);
 
+        $separator = __('postings.qualifier_separator');
+
         Livewire::test(ListPostings::class)
             ->assertTableColumnStateSet('title', 'Staff Engineer', $posting)
-            ->assertTableColumnStateSet('company', 'Northwind Logistics', $posting)
-            ->assertTableColumnStateSet('location', 'Leeds', $posting)
-            ->assertTableColumnStateSet('salary_text', '£90,000', $posting)
-            ->assertTableColumnStateSet('source_site', 'example-board.test', $posting);
+            ->assertTableColumnStateSet('source_site', 'example-board.test', $posting)
+            ->assertTableColumnHasDescription(
+                'title',
+                'Northwind Logistics'.$separator.'Leeds'.$separator.'£90,000',
+                $posting,
+            );
     }
 
     /**
@@ -173,20 +175,20 @@ class PostingsListTest extends TestCase
     }
 
     /**
-     * Neither the page nor extraction guesses, and the list must not undo that:
-     * a blank cell cannot be told from a value that is blank.
+     * Neither the page nor extraction guesses, and the list must not undo
+     * that: a blank cell cannot be told from a value that is blank. The title
+     * is the column's value, so it is the field that gets the placeholder.
      */
-    #[DataProvider('absentFields')]
-    public function test_a_field_neither_source_gave_shows_as_absent(string $column): void
+    public function test_a_posting_the_capture_could_not_name_shows_as_absent(): void
     {
         $this->signIn();
 
-        $posting = Posting::factory()->create([$column => null]);
+        $posting = Posting::factory()->create(['title' => null]);
 
         Livewire::test(ListPostings::class)
-            ->assertTableColumnStateSet($column, null, $posting)
+            ->assertTableColumnStateSet('title', null, $posting)
             ->assertTableColumnExists(
-                $column,
+                'title',
                 fn (TextColumn $text): bool => $text->getPlaceholder() === __('postings.absent'),
                 $posting,
             )
@@ -194,22 +196,90 @@ class PostingsListTest extends TestCase
     }
 
     /**
-     * @return iterable<string, array{string}>
+     * The facts that qualify a title are one line, so a field the capture did
+     * not find is left out of it rather than placeheld: a line of dashes is
+     * noise, and the line already says what is known.
+     *
+     * @param  array<string, string|null>  $found
+     * @param  list<string>  $expected  what the line reads, in order
      */
-    public static function absentFields(): iterable
+    #[DataProvider('qualifierLines')]
+    public function test_the_qualifying_line_carries_only_what_the_capture_found(
+        array $found,
+        array $expected,
+    ): void {
+        $this->signIn();
+
+        $posting = Posting::factory()->create($found);
+
+        $component = Livewire::test(ListPostings::class);
+
+        if ($expected === []) {
+            $component->assertTableColumnExists(
+                'title',
+                fn (TextColumn $column): bool => $column->getDescriptionBelow() === null,
+                $posting,
+            );
+
+            return;
+        }
+
+        $component->assertTableColumnHasDescription(
+            'title',
+            implode((string) __('postings.qualifier_separator'), $expected),
+            $posting,
+        );
+    }
+
+    /**
+     * The separator is assembled in the test rather than here: a data provider
+     * runs before the application is booted, so there is no translator to ask.
+     *
+     * @return iterable<string, array{array<string, string|null>, list<string>}>
+     */
+    public static function qualifierLines(): iterable
     {
-        yield 'title' => ['title'];
-        yield 'company' => ['company'];
-        yield 'location' => ['location'];
-        yield 'salary' => ['salary_text'];
+        $all = [
+            'company' => 'Northwind Logistics',
+            'location' => 'Leeds',
+            'salary_text' => '£90,000',
+        ];
+
+        yield 'everything' => [$all, ['Northwind Logistics', 'Leeds', '£90,000']];
+
+        yield 'no company' => [
+            [...$all, 'company' => null],
+            ['Leeds', '£90,000'],
+        ];
+
+        yield 'no location' => [
+            [...$all, 'location' => null],
+            ['Northwind Logistics', '£90,000'],
+        ];
+
+        yield 'no salary' => [
+            [...$all, 'salary_text' => null],
+            ['Northwind Logistics', 'Leeds'],
+        ];
+
+        yield 'only a company' => [
+            ['company' => 'Northwind Logistics', 'location' => null, 'salary_text' => null],
+            ['Northwind Logistics'],
+        ];
+
+        yield 'nothing the capture could qualify it with' => [
+            ['company' => null, 'location' => null, 'salary_text' => null],
+            [],
+        ];
     }
 
     /**
      * A posting whose extraction has not run yet, and one whose extraction
-     * failed, are both rows with nothing in them. `cv:status` is where the
+     * failed, are both rows with nothing in them: the placeholder where the
+     * title would be, and no qualifying line at all. `cv:status` is where the
      * difference between the two is visible.
      */
-    public function test_a_posting_awaiting_extraction_lists_with_every_field_absent(): void
+    public function test_a_posting_awaiting_extraction_lists_with_nothing_but_its_placeholder(): void
     {
         $this->signIn();
 
@@ -218,9 +288,11 @@ class PostingsListTest extends TestCase
         Livewire::test(ListPostings::class)
             ->assertCanSeeTableRecords([$posting])
             ->assertTableColumnStateSet('title', null, $posting)
-            ->assertTableColumnStateSet('company', null, $posting)
-            ->assertTableColumnStateSet('location', null, $posting)
-            ->assertTableColumnStateSet('salary_text', null, $posting)
+            ->assertTableColumnExists(
+                'title',
+                fn (TextColumn $column): bool => $column->getDescriptionBelow() === null,
+                $posting,
+            )
             ->assertSee(__('postings.absent'));
     }
 
@@ -251,37 +323,11 @@ class PostingsListTest extends TestCase
     }
 
     /**
-     * The identity of a posting is one cell, read downwards: the title is what
-     * a reader looks for and the company and location qualify it.
-     */
-    public function test_the_title_company_and_location_are_one_stacked_cell(): void
-    {
-        $this->signIn();
-
-        $layout = $this->listTable()->getColumnsLayout();
-
-        $this->assertCount(1, $layout);
-
-        $split = $layout[0];
-
-        if (! $split instanceof Split) {
-            $this->fail('The row is not laid out as a split.');
-        }
-
-        $stack = $split->getComponents()[0] ?? null;
-
-        if (! $stack instanceof Stack) {
-            $this->fail('The split does not open with a stack.');
-        }
-
-        $this->assertSame(['title', 'company', 'location'], array_keys($stack->getColumns()));
-    }
-
-    /**
      * The list is for choosing which posting to spend a generation on, and
      * what a posting needs beyond that is the posting's own screen. So neither
      * the cover letter request nor the hidden-text warning is a column here,
-     * though a capture still records both.
+     * though a capture still records both. What qualifies a title rides on the
+     * title column rather than taking columns of its own.
      */
     public function test_the_list_carries_what_a_choice_needs_and_nothing_else(): void
     {
@@ -289,13 +335,50 @@ class PostingsListTest extends TestCase
 
         $this->assertSame([
             'title',
-            'company',
-            'location',
-            'salary_text',
             'source_site',
             'created_at',
             'status',
         ], array_keys($this->listTable()->getColumns()));
+    }
+
+    /**
+     * The qualifying line is a description on the title column, not a layout
+     * component: a layout component in `columns()` costs the whole list its
+     * table — no headings and no click-to-sort — and reading a list down is
+     * what those are for.
+     */
+    public function test_the_list_renders_a_table_the_reader_can_sort_from_its_headings(): void
+    {
+        $this->signIn();
+
+        $table = $this->listTable();
+
+        // Filament's own flag for a row laid out as content rather than as
+        // cells, which is what a layout component in `columns()` turns on.
+        $this->assertFalse($table->hasColumnsLayout());
+
+        $title = $table->getColumn('title');
+
+        if ($title === null) {
+            $this->fail('The list has no title column.');
+        }
+
+        $this->assertTrue($title->isSortable());
+
+        $first = Posting::factory()->create(['title' => 'Ansible Engineer']);
+        $last = Posting::factory()->create(['title' => 'Zone Lead']);
+
+        Livewire::test(ListPostings::class)
+            // The headings are what the reader clicks, so they have to be on
+            // the page for the sort to be reachable at all.
+            ->assertSee(__('postings.columns.title'))
+            ->assertSee(__('postings.columns.source'))
+            ->assertSee(__('postings.columns.captured'))
+            ->assertSee(__('postings.columns.status'))
+            ->sortTable('title')
+            ->assertCanSeeTableRecords([$first, $last], inOrder: true)
+            ->sortTable('title', 'desc')
+            ->assertCanSeeTableRecords([$last, $first], inOrder: true);
     }
 
     /**
