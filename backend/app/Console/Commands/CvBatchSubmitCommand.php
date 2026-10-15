@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Batching\RefusalReason;
 use App\Batching\SubmitBatch;
 use App\Llm\LlmFailure;
 use Illuminate\Console\Command;
@@ -45,8 +46,24 @@ class CvBatchSubmitCommand extends Command
             return self::FAILURE;
         }
 
-        if ($outcome->requestCount === 0 && $outcome->refused === 0) {
-            $this->components->info('Nothing pending.');
+        $notBuildable = $outcome->refusedBecause(RefusalReason::NotBuildable);
+        $discarded = $outcome->refusedBecause(RefusalReason::PostingDiscarded);
+
+        // Said wherever it applies, and never an error: a revision behind a
+        // discarded posting is work the owner decided against, not work that
+        // went wrong, and there is nothing for them to do about it.
+        if ($discarded > 0) {
+            $this->components->info(sprintf(
+                '%d pending %s passed over: the posting was discarded.',
+                $discarded,
+                $discarded === 1 ? 'revision' : 'revisions',
+            ));
+        }
+
+        if ($outcome->requestCount === 0 && $notBuildable === 0) {
+            if ($discarded === 0) {
+                $this->components->info('Nothing pending.');
+            }
 
             return self::SUCCESS;
         }
@@ -56,8 +73,8 @@ class CvBatchSubmitCommand extends Command
             $this->line(sprintf(
                 '  <fg=red>Nothing was submitted: %d pending %s cannot be built. '
                 .'Run php artisan cv:lint.</>',
-                $outcome->refused,
-                $outcome->refused === 1 ? 'revision' : 'revisions',
+                $notBuildable,
+                $notBuildable === 1 ? 'revision' : 'revisions',
             ));
             $this->newLine();
 
@@ -74,11 +91,11 @@ class CvBatchSubmitCommand extends Command
             $outcome->providerBatchId,
         ));
 
-        if ($outcome->refused > 0) {
+        if ($notBuildable > 0) {
             $this->components->warn(sprintf(
                 '%d pending %s could not be built. Run php artisan cv:lint.',
-                $outcome->refused,
-                $outcome->refused === 1 ? 'revision' : 'revisions',
+                $notBuildable,
+                $notBuildable === 1 ? 'revision' : 'revisions',
             ));
         }
 

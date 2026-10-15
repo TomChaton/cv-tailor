@@ -10,6 +10,7 @@ use App\Llm\ModelRegistry;
 use App\Models\LlmBatch;
 use App\Models\LlmBatchRevision;
 use App\Models\Revision;
+use App\Postings\PostingStatus;
 use App\Revisions\RevisionStatus;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\ConnectionInterface;
@@ -48,15 +49,24 @@ class SubmitBatch
             return SubmitOutcome::halted($this->halt->haltedBy());
         }
 
+        $refusals = RefusalReason::none();
+
+        // Counted before anything is selected, because a run that passed one
+        // over would otherwise look like a run that found nothing: these
+        // revisions are deliberately left `pending` and nothing will ever pick
+        // them up.
+        $refusals[RefusalReason::PostingDiscarded->value] = $this->behindADiscardedPosting();
+
         $pending = $this->pending();
 
         if ($pending === []) {
-            return SubmitOutcome::nothingPending();
+            return array_sum($refusals) === 0
+                ? SubmitOutcome::nothingPending()
+                : SubmitOutcome::nothingUsable($refusals);
         }
 
         /** @var array<int, BatchRequest> $requests */
         $requests = [];
-        $refused = 0;
 
         foreach ($pending as $revision) {
             try {
@@ -65,12 +75,12 @@ class SubmitBatch
                 // The builder has already written `generation.refused`, which
                 // is the alarm. The revision stays `pending`, so the first run
                 // after the master CV is fixed picks it up.
-                $refused++;
+                $refusals[RefusalReason::NotBuildable->value]++;
             }
         }
 
         if ($requests === []) {
-            return SubmitOutcome::nothingUsable($refused);
+            return SubmitOutcome::nothingUsable($refusals);
         }
 
         // Submitted before anything is written down, so that a failure here
@@ -87,11 +97,20 @@ class SubmitBatch
 
         $this->events->submitted($batch);
 
-        return SubmitOutcome::submitted($batch, $refused);
+        return SubmitOutcome::submitted($batch, $refusals);
     }
 
     /**
      * Revisions waiting to be generated, oldest first.
+     *
+     * **A revision whose posting has been discarded is not one of them.**
+     * Discarding abandons the pending revisions it finds, so this is belt and
+     * braces — but the money is on this path, and a posting discarded between
+     * one run's selection and the next one's would otherwise slip through.
+     *
+     * `whereRelation` is Eloquent's shorthand for a constrained `whereHas`: it
+     * compiles to an `EXISTS` subquery against `postings`, so the exclusion is
+     * part of the selection rather than something a caller has to apply.
      *
      * @return list<Revision>
      */
@@ -100,9 +119,21 @@ class SubmitBatch
         /** @var list<Revision> */
         return Revision::query()
             ->where('status', RevisionStatus::Pending)
+            ->whereRelation('posting', 'status', '!=', PostingStatus::Discarded)
             ->oldest('id')
             ->get()
             ->all();
+    }
+
+    /**
+     * How many waiting revisions the selection above leaves behind.
+     */
+    private function behindADiscardedPosting(): int
+    {
+        return Revision::query()
+            ->where('status', RevisionStatus::Pending)
+            ->whereRelation('posting', 'status', PostingStatus::Discarded)
+            ->count();
     }
 
     /**

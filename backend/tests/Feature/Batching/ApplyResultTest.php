@@ -15,6 +15,8 @@ use App\Models\LlmBatch;
 use App\Models\LlmBatchRevision;
 use App\Models\Revision;
 use App\Observability\EventLogger;
+use App\Postings\DiscardPosting;
+use App\Postings\PostingStatus;
 use App\Revisions\RevisionStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -60,6 +62,29 @@ class ApplyResultTest extends TestCase
         $this->assertNotNull($line);
         $this->assertSame($revision->id, $line['context']['revision_id']);
         $this->assertSame($batch->id, $line['context']['llm_batch_id']);
+    }
+
+    /**
+     * A revision that has already gone out is paid for, and its submission row
+     * has to be resolved or its batch never closes. So a posting discarded
+     * while it was in flight changes nothing here: the result is stored and
+     * the batch closes. What the discard decided is honoured further on, where
+     * the posting declines to follow the revision to `ready`.
+     */
+    public function test_a_result_is_applied_even_though_its_posting_was_discarded(): void
+    {
+        [$batch, $revision] = $this->submitted();
+
+        app(DiscardPosting::class)->handle($revision->posting()->sole());
+
+        $this->apply()->handle($batch, BatchResult::succeeded((string) $revision->id, $this->reply()));
+
+        $stored = $revision->fresh();
+
+        $this->assertNotNull($stored);
+        $this->assertSame(RevisionStatus::Generated, $stored->status);
+        $this->assertSame(SubmissionOutcome::Succeeded, $this->submission($batch, $revision)->outcome);
+        $this->assertSame(PostingStatus::Discarded, $revision->posting()->sole()->status);
     }
 
     /**

@@ -4,6 +4,7 @@ namespace Tests\Feature\Batching;
 
 use App\Batching\BatchRequestBuilder;
 use App\Batching\LlmBatchState;
+use App\Batching\RefusalReason;
 use App\Batching\SubmissionOutcome;
 use App\Batching\SubmitBatch;
 use App\Batching\SubmitterHalt;
@@ -16,8 +17,10 @@ use App\Llm\LlmFailureKind;
 use App\Llm\Testing\FakeLlmClient;
 use App\Models\LlmBatch;
 use App\Models\LlmBatchRevision;
+use App\Models\Posting;
 use App\Models\Revision;
 use App\Observability\EventLogger;
+use App\Postings\PostingStatus;
 use App\Revisions\RevisionStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use RuntimeException;
@@ -55,7 +58,7 @@ class SubmitBatchTest extends TestCase
         $outcome = $this->submit()->handle();
 
         $this->assertSame(1, $outcome->requestCount);
-        $this->assertSame(0, $outcome->refused);
+        $this->assertSame(0, $outcome->refused());
 
         $batch = LlmBatch::query()->sole();
 
@@ -154,13 +157,83 @@ class SubmitBatchTest extends TestCase
         $outcome = $this->submit()->handle();
 
         $this->assertSame(1, $outcome->requestCount);
-        $this->assertSame(1, $outcome->refused);
+        $this->assertSame(1, $outcome->refused());
         $stored = $refused->fresh();
 
         $this->assertNotNull($stored);
         $this->assertSame(RevisionStatus::Pending, $stored->status);
         $this->assertSame(0, $stored->attempts);
         $this->assertSame(RevisionStatus::Submitted, $built->fresh()?->status);
+    }
+
+    /**
+     * Belt and braces: discarding abandons the pending revisions it finds, so
+     * nothing should normally leave one here. The money is on this path, so
+     * the submitter declines rather than relies on that.
+     */
+    public function test_a_revision_behind_a_discarded_posting_is_passed_over(): void
+    {
+        $discarded = Posting::factory()->status(PostingStatus::Discarded)->create();
+        $waiting = Revision::factory()->create(['posting_id' => $discarded->id]);
+
+        $wanted = Revision::factory()->create();
+
+        $outcome = $this->submit()->handle();
+
+        $this->assertSame(1, $outcome->requestCount);
+        $this->assertSame(1, $outcome->refusedBecause(RefusalReason::PostingDiscarded));
+        $this->assertSame(0, $outcome->refusedBecause(RefusalReason::NotBuildable));
+
+        $submitted = $this->fake()->submittedBatches();
+
+        $this->assertCount(1, $submitted);
+        $this->assertSame(
+            [(string) $wanted->id],
+            array_map(
+                static fn (BatchRequest $request): string => $request->customId,
+                $submitted[0]['requests'],
+            ),
+        );
+
+        // Left where it was, and nothing was spent on it.
+        $stored = $waiting->fresh();
+
+        $this->assertNotNull($stored);
+        $this->assertSame(RevisionStatus::Pending, $stored->status);
+        $this->assertSame(0, $stored->attempts);
+        $this->assertDatabaseCount('llm_batch_revision', 1);
+    }
+
+    /**
+     * No batch is opened for it, so nothing is paid for and nothing has to be
+     * collected.
+     */
+    public function test_a_run_that_finds_only_discarded_postings_submits_nothing(): void
+    {
+        $discarded = Posting::factory()->status(PostingStatus::Discarded)->create();
+        Revision::factory()->create(['posting_id' => $discarded->id]);
+
+        $outcome = $this->submit()->handle();
+
+        $this->assertSame(0, $outcome->requestCount);
+        $this->assertSame(1, $outcome->refusedBecause(RefusalReason::PostingDiscarded));
+        $this->assertSame([], $this->fake()->submittedBatches());
+        $this->assertDatabaseCount('llm_batches', 0);
+    }
+
+    /**
+     * An abandoned revision is terminal: nothing selects it, so nothing ever
+     * pays to generate it again.
+     */
+    public function test_an_abandoned_revision_is_never_submitted(): void
+    {
+        Revision::factory()->status(RevisionStatus::Abandoned)->create();
+
+        $outcome = $this->submit()->handle();
+
+        $this->assertSame(0, $outcome->requestCount);
+        $this->assertSame(0, $outcome->refused());
+        $this->assertDatabaseCount('llm_batches', 0);
     }
 
     public function test_nothing_is_submitted_when_no_revision_can_be_built(): void
@@ -172,7 +245,7 @@ class SubmitBatchTest extends TestCase
         $outcome = $this->submit()->handle();
 
         $this->assertSame(0, $outcome->requestCount);
-        $this->assertSame(1, $outcome->refused);
+        $this->assertSame(1, $outcome->refused());
         $this->assertDatabaseCount('llm_batches', 0);
         $this->assertSame(RevisionStatus::Pending, $revision->fresh()?->status);
     }

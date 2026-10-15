@@ -6,7 +6,9 @@ use App\Batching\BatchRequestBuilder;
 use App\Batching\SubmitterHalt;
 use App\Llm\LlmFailureKind;
 use App\Llm\Testing\FakeLlmClient;
+use App\Models\Posting;
 use App\Models\Revision;
+use App\Postings\PostingStatus;
 use App\Revisions\RevisionStatus;
 use Illuminate\Console\Command;
 use Illuminate\Console\Scheduling\CallbackEvent;
@@ -55,6 +57,23 @@ class CvBatchSubmitCommandTest extends TestCase
         $this->artisan('cv:batch-submit')
             ->expectsOutputToContain('Nothing pending.')
             ->assertSuccessful();
+    }
+
+    /**
+     * Not a failure and not advice to run the linter: the owner decided
+     * against this posting, and there is nothing for them to do about it.
+     */
+    public function test_it_says_what_it_passed_over_for_a_discarded_posting(): void
+    {
+        $discarded = Posting::factory()->status(PostingStatus::Discarded)->create();
+        Revision::factory()->create(['posting_id' => $discarded->id]);
+
+        $this->artisan('cv:batch-submit')
+            ->expectsOutputToContain('1 pending revision passed over: the posting was discarded.')
+            ->doesntExpectOutputToContain('cv:lint')
+            ->assertSuccessful();
+
+        $this->assertDatabaseCount('llm_batches', 0);
     }
 
     /**

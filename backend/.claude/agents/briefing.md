@@ -396,7 +396,7 @@ deliberately, and not to be made to agree.
   - `output_json` (the model's selection), `resolved_json` (selection resolved
     against the master CV), `validation_json` (findings), `pdf_path`.
   - `status`: `pending` | `submitted` | `generated` | `validated` | `ready` |
-    `failed`; `attempts`; `error`.
+    `failed` | `abandoned`; `attempts`; `error`.
 - **`master_cv`** — the Markdown its owner is editing, and when it was
   last saved. **Singular, and one row**: this is single-tenant, so there is
   one CV, and a plural name beside `master_cv_versions` would read as a
@@ -436,6 +436,20 @@ missing. It is logged as well as raised, under `revision.mutation_rejected`.
 Eloquent fires no model event for a query-builder update, so the guarantee
 covers writes that go through the model. Revisions are written by this
 application's own actions, and those go through the model.
+
+**A `pending` revision may be abandoned, and that is not a mutation of a
+complete one.** The rule is about a revision moving away from `ready` or
+`failed`; `pending` is neither, so moving it to `abandoned` leaves the
+guarantee exactly where it was. The write is conditional on `pending` for a
+different reason: the submitter claims a revision with the same idiom, and one
+it claimed in between is already paid for and has to stay `submitted`.
+
+**`abandoned` is not `failed`, and the two must not be collapsed.** A failure
+is the model or the provider not delivering: it spends one of the revision's
+attempts, because an attempt bought something that did not work. Abandoning is
+a decision the owner took, it costs nothing, and nothing retries it. Collapsing
+them would put a decision in the failure counts and leave the attempt limit
+meaning two things at once.
 
 `current_revision_id` is the one the owner is looking at; `applied_revision_id`
 is the one they actually sent. They are separate because the version that went
@@ -487,6 +501,21 @@ came to nothing, and those are one decision. The guarantee that a discarded
 posting is never generated from is the status itself rather than a condition
 anything has to remember: the sweep reads `wanted`, and discarding moves a
 posting off it.
+
+**The gate protects the start of the spend; discarding protects the rest of
+it.** A revision already queued is past the gate, and left `pending` it would
+be submitted, paid for, and its result applied to a posting that was thrown
+away. So discarding abandons the generation nobody is waiting for any more — a
+`pending` revision becomes `abandoned`, and one that has already gone out is
+left to finish, because it is paid for and its submission row has to resolve or
+its batch never closes. `MarkPostingReady` is what then declines to follow it,
+which is the same reasoning that keeps a render from walking the tracker
+backwards.
+
+**And the submitter will not submit for a discarded posting regardless.** Its
+selection excludes them, which is belt and braces on the one path the money is
+on: discard is the decision point, but a posting discarded between one
+selection and the next would otherwise slip through.
 
 **The status is stored even though `ready` could be derived** from the current
 revision. `reviewed` and `applied` are things the owner did, which no revision

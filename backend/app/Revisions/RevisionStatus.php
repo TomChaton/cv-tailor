@@ -20,6 +20,16 @@ enum RevisionStatus: string
     case Failed = 'failed';
 
     /**
+     * The owner stopped wanting this, which is not the same thing as `failed`.
+     *
+     * A failure is the model or the provider not delivering, and it spends an
+     * attempt. This is a decision, it costs nothing, and it is never retried.
+     * Conflating the two would put a decision in the failure counts and leave
+     * the attempt limit meaning two things.
+     */
+    case Abandoned = 'abandoned';
+
+    /**
      * @return list<string>
      */
     public static function values(): array
