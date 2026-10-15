@@ -70,12 +70,17 @@ final readonly class PostingEvents
      * discarded after its CV was read are the same decision taken about very
      * different things, and the status it was in is the only thing that tells
      * a reader which happened.
+     *
+     * `revisions_abandoned` is what the decision stopped. A discard that
+     * abandoned generation is a different event in kind from one that
+     * abandoned none, and the owner is paying for the difference.
      */
-    public function discarded(Posting $posting, PostingStatus $from): void
+    public function discarded(Posting $posting, PostingStatus $from, int $revisionsAbandoned): void
     {
         $this->log->log('posting.discarded', [
             'posting_id' => $posting->id,
             'from' => $from->value,
+            'revisions_abandoned' => $revisionsAbandoned,
         ]);
     }
 

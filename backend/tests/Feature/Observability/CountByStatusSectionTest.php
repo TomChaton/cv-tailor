@@ -59,6 +59,24 @@ class CountByStatusSectionTest extends TestCase
         }
     }
 
+    /**
+     * As above, for revisions: a revision in a status the report cannot count
+     * has vanished from the counts, which is the "why is nothing happening"
+     * trap this command exists to answer.
+     */
+    public function test_it_counts_a_revision_in_every_status_the_enum_has(): void
+    {
+        foreach (RevisionStatus::cases() as $status) {
+            Revision::factory()->status($status)->create();
+        }
+
+        $rows = app(RevisionsSection::class)->rows();
+
+        foreach (RevisionStatus::values() as $status) {
+            $this->assertSame('1', $rows[$status], $status.' was not counted');
+        }
+    }
+
     public function test_it_reports_a_zero_for_every_revision_status_nothing_is_in(): void
     {
         $rows = app(RevisionsSection::class)->rows();

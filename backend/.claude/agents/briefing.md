@@ -396,7 +396,7 @@ deliberately, and not to be made to agree.
   - `output_json` (the model's selection), `resolved_json` (selection resolved
     against the master CV), `validation_json` (findings), `pdf_path`.
   - `status`: `pending` | `submitted` | `generated` | `validated` | `ready` |
-    `failed`; `attempts`; `error`.
+    `failed` | `abandoned`; `attempts`; `error`.
 - **`master_cv`** — the Markdown its owner is editing, and when it was
   last saved. **Singular, and one row**: this is single-tenant, so there is
   one CV, and a plural name beside `master_cv_versions` would read as a
@@ -436,6 +436,20 @@ missing. It is logged as well as raised, under `revision.mutation_rejected`.
 Eloquent fires no model event for a query-builder update, so the guarantee
 covers writes that go through the model. Revisions are written by this
 application's own actions, and those go through the model.
+
+**A `pending` revision may be abandoned, and that is not a mutation of a
+complete one.** The rule is about a revision moving away from `ready` or
+`failed`; `pending` is neither, so moving it to `abandoned` leaves the
+guarantee exactly where it was. The write is conditional on `pending` for a
+different reason: the submitter claims a revision with the same idiom, and one
+it claimed in between is already paid for and has to stay `submitted`.
+
+**`abandoned` is not `failed`, and the two must not be collapsed.** A failure
+is the model or the provider not delivering: it spends one of the revision's
+attempts, because an attempt bought something that did not work. Abandoning is
+a decision the owner took, it costs nothing, and nothing retries it. Collapsing
+them would put a decision in the failure counts and leave the attempt limit
+meaning two things at once.
 
 `current_revision_id` is the one the owner is looking at; `applied_revision_id`
 is the one they actually sent. They are separate because the version that went
@@ -487,6 +501,21 @@ came to nothing, and those are one decision. The guarantee that a discarded
 posting is never generated from is the status itself rather than a condition
 anything has to remember: the sweep reads `wanted`, and discarding moves a
 posting off it.
+
+**The gate protects the start of the spend; discarding protects the rest of
+it.** A revision already queued is past the gate, and left `pending` it would
+be submitted, paid for, and its result applied to a posting that was thrown
+away. So discarding abandons the generation nobody is waiting for any more — a
+`pending` revision becomes `abandoned`, and one that has already gone out is
+left to finish, because it is paid for and its submission row has to resolve or
+its batch never closes. `MarkPostingReady` is what then declines to follow it,
+which is the same reasoning that keeps a render from walking the tracker
+backwards.
+
+**And the submitter will not submit for a discarded posting regardless.** Its
+selection excludes them, which is belt and braces on the one path the money is
+on: discard is the decision point, but a posting discarded between one
+selection and the next would otherwise slip through.
 
 **The status is stored even though `ready` could be derived** from the current
 revision. `reviewed` and `applied` are things the owner did, which no revision
@@ -837,8 +866,8 @@ about a page is data about a job and never an instruction to this prompt.
 Generation uses the provider's batch API: nothing is interactive, and a batch
 costs half as much as the same requests sent live.
 
-- **Submit** (scheduled): gather every `pending` revision and send it as one
-  batch. Each request's custom ID is the revision's ID.
+- **Submit** (scheduled): gather every revision that is waiting and send it as
+  one batch. Each request's custom ID is the revision's ID.
 - **Poll** (scheduled): ask about every batch that still owes us results, and
   drain every ended one in the same run. Streaming a batch's results dispatches
   one queued job per result; the job applies it.
@@ -851,6 +880,23 @@ costs half as much as the same requests sent live.
 batch size and no maximum wait.** A quorum would buy nothing and cost every
 revision a wait for company that may never arrive. A batch of one is the normal
 case here, which is also why a single bad batch is not evidence of anything.
+
+**What counts as waiting is defined once, as a query scope on the `Revision`
+model.** It is `pending`, and not behind a discarded posting. More than one
+thing asks the question — the submitter sends them, `cv:batch-resume` reports
+how many there are — and a second copy of the condition is a second thing to
+forget when the definition next changes. A command that promises work the next
+run declines sends the owner looking for a fault in the one command they were
+told to run. What the scope leaves out is reported rather than dropped, so a
+run that passed a revision over cannot read as a run that found nothing.
+
+**A count per status in `cv:status` is a census of the column and not a
+forecast of the next run.** Its rows add up to the table, which is what makes a
+row with nothing in it worth printing, so the waiting definition deliberately
+does not reach it: subtracting a revision from `pending` there would leave it
+in no row at all and hide it from the first place anybody looks. The posting
+beside it is counted under `discarded` in the same report, which is the reading
+that explains a `pending` revision nothing will submit.
 
 **The request a revision is submitted with comes from an injected contract**,
 implemented by generation. The batch lifecycle moves revisions and batches
@@ -1601,7 +1647,7 @@ toolchain:
 | Import a master CV from a file | `docker compose exec app php artisan cv:import /tmp/master-cv.md` |
 | Ask again about every posting extraction has not answered | `docker compose exec app php artisan cv:extract` |
 | Queue the postings marked as wanted | `docker compose exec app php artisan cv:queue` |
-| Submit every pending revision as one batch | `docker compose exec app php artisan cv:batch-submit` |
+| Submit every waiting revision as one batch | `docker compose exec app php artisan cv:batch-submit` |
 | Collect the results of every finished batch | `docker compose exec app php artisan cv:batch-poll` |
 | Arm the submitter again after it halted itself | `docker compose exec app php artisan cv:batch-resume` |
 | Add the IDs the master CV is missing | `docker compose exec app php artisan cv:id > master-cv-with-ids.md` |

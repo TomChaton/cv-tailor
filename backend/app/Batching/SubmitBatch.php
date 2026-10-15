@@ -48,15 +48,24 @@ class SubmitBatch
             return SubmitOutcome::halted($this->halt->haltedBy());
         }
 
+        $refusals = RefusalReason::none();
+
+        // Counted before anything is selected, because a run that passed one
+        // over would otherwise look like a run that found nothing: these
+        // revisions are deliberately left `pending` and nothing will ever pick
+        // them up.
+        $refusals[RefusalReason::PostingDiscarded->value] = $this->behindADiscardedPosting();
+
         $pending = $this->pending();
 
         if ($pending === []) {
-            return SubmitOutcome::nothingPending();
+            return array_sum($refusals) === 0
+                ? SubmitOutcome::nothingPending()
+                : SubmitOutcome::nothingUsable($refusals);
         }
 
         /** @var array<int, BatchRequest> $requests */
         $requests = [];
-        $refused = 0;
 
         foreach ($pending as $revision) {
             try {
@@ -65,12 +74,12 @@ class SubmitBatch
                 // The builder has already written `generation.refused`, which
                 // is the alarm. The revision stays `pending`, so the first run
                 // after the master CV is fixed picks it up.
-                $refused++;
+                $refusals[RefusalReason::NotBuildable->value]++;
             }
         }
 
         if ($requests === []) {
-            return SubmitOutcome::nothingUsable($refused);
+            return SubmitOutcome::nothingUsable($refusals);
         }
 
         // Submitted before anything is written down, so that a failure here
@@ -87,11 +96,16 @@ class SubmitBatch
 
         $this->events->submitted($batch);
 
-        return SubmitOutcome::submitted($batch, $refused);
+        return SubmitOutcome::submitted($batch, $refusals);
     }
 
     /**
      * Revisions waiting to be generated, oldest first.
+     *
+     * What counts as waiting is the `Revision` model's to say —
+     * `cv:batch-resume` reports the answer to the same question, and the two
+     * must not be able to drift. Oldest first is this caller's: the order
+     * requests go out in is no part of what is owed.
      *
      * @return list<Revision>
      */
@@ -99,10 +113,18 @@ class SubmitBatch
     {
         /** @var list<Revision> */
         return Revision::query()
-            ->where('status', RevisionStatus::Pending)
+            ->waiting()
             ->oldest('id')
             ->get()
             ->all();
+    }
+
+    /**
+     * How many waiting revisions the selection above leaves behind.
+     */
+    private function behindADiscardedPosting(): int
+    {
+        return Revision::query()->pendingBehindADiscardedPosting()->count();
     }
 
     /**
