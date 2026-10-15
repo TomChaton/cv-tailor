@@ -29,6 +29,13 @@ class ReviewPanelProvider extends PanelProvider
             ->colors([
                 'primary' => Color::Slate,
             ])
+            // Two items the owner knows by heart, against a list that is
+            // worth the width. So the sidebar collapses to a rail of icons,
+            // and because Filament keeps that open state in a persisted
+            // client-side store, it is collapsed once and stays collapsed.
+            // Collapsible is the whole of what a panel can ask for: there is
+            // no starting state to set.
+            ->sidebarCollapsibleOnDesktop()
             // No dashboard is registered. Filament serves the panel's root by
             // sending the browser to the first item in the navigation, so the
             // postings list is what signing in arrives at; a dashboard would

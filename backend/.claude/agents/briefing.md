@@ -1416,9 +1416,8 @@ the review UI is the only thing this application serves to a browser.
 
 It shows:
 
-- Postings, filterable by status and source, with the hidden-text warning, and
-  the actions that mark one as wanted, discard it, or hand back its CV. The
-  screen calls them Jobs.
+- Postings, filterable by status and source, and the actions that mark one as
+  wanted, discard it, or hand back its CV. The screen calls them Jobs.
 - Per posting: the job description beside the current revision's PDF; the
   requirements checklist (met / partial / gap, linked to evidence); validation
   findings; the model's review notes.
@@ -1468,17 +1467,33 @@ here or it is never generated from.
   one field every capture carries. Both open in a new tab: the owner is
   working through a list and must not lose their place in it. The absent
   placeholder stays a placeholder rather than becoming a link to nowhere.
-- **A field neither the page nor extraction gave shows as absent**, not as an
-  empty cell. Neither source guesses, and a blank cell cannot be told from a
-  value that is blank — so a list that printed one would hand the owner a fact
-  the system never had. A posting still awaiting extraction, or one whose
-  extraction failed, reads the same way: `php artisan cv:status` is where the
-  difference between the two is visible.
-- **The warning about hidden text is a warning and nothing else.** Hidden text
-  in a listing is sometimes aimed at AI tools, so the owner needs to know
-  before trusting what was extracted. A listing with none is the ordinary case
-  and has nothing to say, and a tick-against-cross pair would mark every
-  ordinary posting with a symbol that warns about nothing.
+- **A posting is identified by its title, with what qualifies it beneath.**
+  The company, the location and the salary read as one line under the title
+  rather than as columns of their own. The owner is scanning a list to choose
+  from it, and reads a posting as one thing; three more columns are the width
+  that made the list scroll sideways, and what a job pays is a reason to open
+  it or to pass over it, so it belongs where the choosing happens. The line is
+  the title column's own description, which is what keeps the list a table —
+  see Things that are easy to get wrong.
+- **The title's absence is placeheld and the line's is not.** A field neither
+  the page nor extraction gave shows as absent where it is a column's own
+  value: neither source guesses, and a blank cell cannot be told from a value
+  that is blank, so a list that printed one would hand the owner a fact the
+  system never had. A qualifying fact the capture did not find is left out of
+  the line instead — a line of dashes is noise, and what the line prints is
+  what is known. So a posting still awaiting extraction, or one whose
+  extraction failed, is a placeholder and no line at all: `php artisan
+  cv:status` is where the difference between the two is visible.
+- **The list carries what a choice needs, and what a posting needs is the
+  posting's own screen.** Neither the cover-letter request nor the hidden-text
+  warning is a column here, and both are still recorded by capture — the
+  columns moved rather than the facts going away. The request is on the
+  posting and drives the cover-letter work; the list is for choosing, not for
+  auditing what was asked for. Hidden text in a listing is sometimes aimed at
+  AI tools, which the owner needs to know *before trusting what was
+  extracted* — a question asked while reading one posting, not while scanning
+  fifty. A warning on a list that is being skimmed is a warning that gets
+  skimmed; the same warning beside the job description is read.
 - **A status is shown and never explained.** A legend on a list is read once
   and skipped for ever; the status machine is written down here instead.
 - **The screen says "Jobs" and the schema says `postings`**, deliberately. The
@@ -1495,10 +1510,24 @@ here or it is never generated from.
   this database, so the company's name is slugged into it. Capture omits a
   company rather than guessing one, so a posting without one is ordinary and
   still downloads, under the id.
+- **The record actions are buttons, side by side.** Actions that read as text
+  are easy to miss, and each of these is a decision the page exists for. They
+  stay in a row because no row ever carries three: Want is offered on
+  `captured` alone and Download only where the current revision has a PDF,
+  which a `captured` posting never has. Two buttons are not the width the list
+  needed back, and a dropdown would hide them behind a click to save none of
+  it.
 - **The list is what the panel lands on.** It is the screen the owner signs in
   to look at, so the panel registers no dashboard and Filament sends its root
   at the first item in the navigation. The order of that navigation is stated
   on the resources and pages rather than left to discovery order.
+- **The sidebar collapses, because the panel has two items the owner knows.**
+  The navigation is worth less than the width it stands in, so it is
+  collapsible on desktop and the owner collapses it once — Filament persists
+  that choice client-side, and there is no starting state a panel can ask for.
+  The rail is not what makes the list fit, though: the panel caps content
+  width, so a screen wider than that cap gains nothing from collapsing. What
+  makes the list fit is how few columns it has.
 
 ### The master CV page
 
@@ -1829,3 +1858,19 @@ goes where it is told, which has to be somewhere writable, and
   the column exists before the rows are asked anything. The guard is not
   redundant; it only looks it to someone who has run the suite on nothing but
   SQLite.
+- **A layout component in `columns()` costs the table.** One `Stack`, `Split`
+  or `Grid` anywhere in a table's columns switches the whole list to
+  Filament's content layout: no `<table>`, no column headings, and sorting
+  moved into a "Sort by" dropdown. It is the framework's design and not a flag
+  that can be turned off — the table view branches on a property the presence
+  of the component sets. So a secondary line under a column's value is that
+  column's `description()`, which is a column API and leaves the row a row.
+  Reach for a layout component only where the whole list is meant to stop
+  being a table.
+- **The sidebar's open state is a persisted client-side store**, so there is
+  no starting state to configure. `sidebarCollapsibleOnDesktop()` is the whole
+  of what a panel can ask for: it offers the rail, the person using it decides,
+  and the browser remembers. A panel that wants to open collapsed is asking
+  for something the framework does not have, and the only hooks that look like
+  an answer take an arbitrary CSS class — which this application has no
+  front-end build to supply.
