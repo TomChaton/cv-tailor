@@ -5,7 +5,6 @@ namespace App\Console\Commands;
 use App\Batching\BatchEvents;
 use App\Batching\SubmitterHalt;
 use App\Models\Revision;
-use App\Revisions\RevisionStatus;
 use Illuminate\Console\Command;
 
 /**
@@ -29,7 +28,12 @@ class CvBatchResumeCommand extends Command
             return self::SUCCESS;
         }
 
-        $waiting = Revision::query()->where('status', RevisionStatus::Pending)->count();
+        // The submitter's own definition of waiting, not a second copy of it:
+        // this number is read as what the next run will send, so a revision
+        // the submitter declines must not be counted here. One behind a
+        // discarded posting is the case, and it would have the owner looking
+        // for a fault in the command they were told to run.
+        $waiting = Revision::query()->waiting()->count();
         $ids = $halt->resume();
 
         $events->submitterResumed($ids, $waiting);

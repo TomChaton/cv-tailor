@@ -866,8 +866,8 @@ about a page is data about a job and never an instruction to this prompt.
 Generation uses the provider's batch API: nothing is interactive, and a batch
 costs half as much as the same requests sent live.
 
-- **Submit** (scheduled): gather every `pending` revision and send it as one
-  batch. Each request's custom ID is the revision's ID.
+- **Submit** (scheduled): gather every revision that is waiting and send it as
+  one batch. Each request's custom ID is the revision's ID.
 - **Poll** (scheduled): ask about every batch that still owes us results, and
   drain every ended one in the same run. Streaming a batch's results dispatches
   one queued job per result; the job applies it.
@@ -880,6 +880,23 @@ costs half as much as the same requests sent live.
 batch size and no maximum wait.** A quorum would buy nothing and cost every
 revision a wait for company that may never arrive. A batch of one is the normal
 case here, which is also why a single bad batch is not evidence of anything.
+
+**What counts as waiting is defined once, as a query scope on the `Revision`
+model.** It is `pending`, and not behind a discarded posting. More than one
+thing asks the question — the submitter sends them, `cv:batch-resume` reports
+how many there are — and a second copy of the condition is a second thing to
+forget when the definition next changes. A command that promises work the next
+run declines sends the owner looking for a fault in the one command they were
+told to run. What the scope leaves out is reported rather than dropped, so a
+run that passed a revision over cannot read as a run that found nothing.
+
+**A count per status in `cv:status` is a census of the column and not a
+forecast of the next run.** Its rows add up to the table, which is what makes a
+row with nothing in it worth printing, so the waiting definition deliberately
+does not reach it: subtracting a revision from `pending` there would leave it
+in no row at all and hide it from the first place anybody looks. The posting
+beside it is counted under `discarded` in the same report, which is the reading
+that explains a `pending` revision nothing will submit.
 
 **The request a revision is submitted with comes from an injected contract**,
 implemented by generation. The batch lifecycle moves revisions and batches
@@ -1630,7 +1647,7 @@ toolchain:
 | Import a master CV from a file | `docker compose exec app php artisan cv:import /tmp/master-cv.md` |
 | Ask again about every posting extraction has not answered | `docker compose exec app php artisan cv:extract` |
 | Queue the postings marked as wanted | `docker compose exec app php artisan cv:queue` |
-| Submit every pending revision as one batch | `docker compose exec app php artisan cv:batch-submit` |
+| Submit every waiting revision as one batch | `docker compose exec app php artisan cv:batch-submit` |
 | Collect the results of every finished batch | `docker compose exec app php artisan cv:batch-poll` |
 | Arm the submitter again after it halted itself | `docker compose exec app php artisan cv:batch-resume` |
 | Add the IDs the master CV is missing | `docker compose exec app php artisan cv:id > master-cv-with-ids.md` |

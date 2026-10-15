@@ -10,7 +10,6 @@ use App\Llm\ModelRegistry;
 use App\Models\LlmBatch;
 use App\Models\LlmBatchRevision;
 use App\Models\Revision;
-use App\Postings\PostingStatus;
 use App\Revisions\RevisionStatus;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\ConnectionInterface;
@@ -103,14 +102,10 @@ class SubmitBatch
     /**
      * Revisions waiting to be generated, oldest first.
      *
-     * **A revision whose posting has been discarded is not one of them.**
-     * Discarding abandons the pending revisions it finds, so this is belt and
-     * braces — but the money is on this path, and a posting discarded between
-     * one run's selection and the next one's would otherwise slip through.
-     *
-     * `whereRelation` is Eloquent's shorthand for a constrained `whereHas`: it
-     * compiles to an `EXISTS` subquery against `postings`, so the exclusion is
-     * part of the selection rather than something a caller has to apply.
+     * What counts as waiting is the `Revision` model's to say —
+     * `cv:batch-resume` reports the answer to the same question, and the two
+     * must not be able to drift. Oldest first is this caller's: the order
+     * requests go out in is no part of what is owed.
      *
      * @return list<Revision>
      */
@@ -118,8 +113,7 @@ class SubmitBatch
     {
         /** @var list<Revision> */
         return Revision::query()
-            ->where('status', RevisionStatus::Pending)
-            ->whereRelation('posting', 'status', '!=', PostingStatus::Discarded)
+            ->waiting()
             ->oldest('id')
             ->get()
             ->all();
@@ -130,10 +124,7 @@ class SubmitBatch
      */
     private function behindADiscardedPosting(): int
     {
-        return Revision::query()
-            ->where('status', RevisionStatus::Pending)
-            ->whereRelation('posting', 'status', PostingStatus::Discarded)
-            ->count();
+        return Revision::query()->pendingBehindADiscardedPosting()->count();
     }
 
     /**
