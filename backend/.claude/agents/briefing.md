@@ -1457,15 +1457,21 @@ here or it is never generated from.
   filters that behaved differently for no reason would be worse than two that
   behave the same, and the source filter has no default because every site
   captured from is a site worth seeing.
-- **Both the title and the source link out to the posting.** A posting is a
-  thing that exists somewhere else, and deciding about it usually means
-  reading the advert again; retyping a search for a page whose URL the system
-  holds is the friction that stops a list being used. The title is the cell a
-  reader reaches for first, and the source links as well because a posting
-  whose title extraction never found still has to be reachable — `url` is the
-  one field every capture carries. Both open in a new tab: the owner is
-  working through a list and must not lose their place in it. The absent
-  placeholder stays a placeholder rather than becoming a link to nowhere.
+- **A row opens the posting, and the source cell is the way out to the
+  board.** The title names the posting rather than the advert, and the
+  posting's own screen is where deciding happens: it carries the job
+  description, the tailored CV, the requirements checklist and the findings. So
+  the title links there, and the way in is stated on the row with Filament's
+  `recordUrl` rather than left to the title — the absent placeholder is a label
+  for nothing and is not dressed as a link, and a posting the capture could not
+  name still has to be reachable. Filament gives that row link to every cell
+  with no URL of its own, so the placeholder's cell leads in with the rest of
+  them, and the title's own link agrees with the row rather than competing with
+  it. The source cell is the row's one outbound link, in a new tab because the
+  owner is working through a list and must not lose their place in it; it is on
+  every row because the board is still worth reaching — to apply, or to see the
+  live page — and `url` is the one field every capture carries. The record
+  actions are not links, so a decision taken from a row stays on the list.
 - **A posting is identified by its title, with what qualifies it beneath.**
   The company, the location and the salary read as one line under the title
   rather than as columns of their own. The owner is scanning a list to choose
@@ -1594,10 +1600,11 @@ is good enough to send.
   among them — into the browser in order to show none of it.
 - **Want, Discard and Download come from the resource**, so the rules they are
   offered under exist once rather than once per surface.
-- **Registering the page is what makes a row on the list lead to it.** Filament
-  points a record at its resource's view page where there is one, so nothing is
-  added to the list to reach this screen, and the title and the source keep
-  their own links out to the advert.
+- **The list says that its rows lead here**, rather than leaving it to
+  Filament's own default, which points a record at whichever of `view` and
+  `edit` the resource registers and authorises. Where a list leads is the
+  list's own decision and not a consequence of which pages happen to exist. See
+  The postings list.
 
 ### The master CV page
 

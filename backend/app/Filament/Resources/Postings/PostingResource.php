@@ -82,6 +82,12 @@ class PostingResource extends Resource
             // Newest first. Filament adds the key as a tiebreaker, so two
             // postings captured in the same second still order by capture.
             ->defaultSort('created_at', 'desc')
+            // A row opens the posting it names. The way in belongs to the row
+            // rather than to a cell, because a posting the capture could not
+            // name has no title to hang a link on and still has to be
+            // reachable — Filament puts this on every cell that has no URL of
+            // its own, so the placeholder's own cell leads here too.
+            ->recordUrl(fn (Posting $record): string => self::getUrl('view', ['record' => $record]))
             ->columns([
                 // A posting is identified by its title, with the facts that
                 // qualify it on a line beneath. That line is the column's own
@@ -92,15 +98,16 @@ class PostingResource extends Resource
                 TextColumn::make('title')
                     ->label(__('postings.columns.title'))
                     ->placeholder(__('postings.absent'))
-                    // Out to the advert, in a new tab: the owner is working
-                    // through a list and deciding, and deciding means reading
-                    // the page again. A posting the capture could not name
-                    // has no text to hang a link on, so the placeholder stays
-                    // a placeholder — the source column is that row's way out.
-                    ->url(
-                        fn (Posting $record): ?string => $record->title === null ? null : $record->url,
-                        shouldOpenInNewTab: true,
-                    )
+                    // In to the posting's own screen, which is the record the
+                    // title names and where deciding happens. Stated on the
+                    // column as well as on the row so the cell a reader
+                    // reaches for first is dressed as the link it is; the
+                    // destination is the row's, so the two agree. The absent
+                    // placeholder is a label for nothing, so it is left plain
+                    // and the row underneath it carries the way in.
+                    ->url(fn (Posting $record): ?string => $record->title === null
+                        ? null
+                        : self::getUrl('view', ['record' => $record]))
                     ->description(
                         fn (Posting $record): ?string => self::qualifiers($record),
                         position: 'below',
@@ -167,9 +174,11 @@ class PostingResource extends Resource
     {
         return [
             'index' => ListPostings::route('/'),
-            // Registering a view page is also what makes a row clickable:
-            // Filament points a record at the resource's view page when there
-            // is one, so the list needs nothing adding to it to lead here.
+            // The page a row leads to. Filament would also point a record here
+            // on its own, through whichever of `view` and `edit` a resource
+            // registers and authorises; the list says where its rows go
+            // instead, because where the list leads is the list's own decision
+            // rather than a consequence of which pages happen to exist.
             'view' => ViewPosting::route('/{record}'),
         ];
     }
