@@ -107,29 +107,82 @@ class PostingsListTest extends TestCase
     }
 
     /**
-     * Deciding about a posting means reading the advert again, and the owner
-     * must not lose their place in the list doing it.
+     * The record the title names is the posting, not the advert, and the
+     * posting's own screen is where deciding happens.
      */
-    public function test_the_title_links_out_to_the_posting_in_a_new_tab(): void
+    public function test_the_title_opens_the_postings_own_screen(): void
     {
         $this->signIn();
 
-        $posting = Posting::factory()->create(['url' => 'https://example-board.test/jobs/1']);
+        $posting = Posting::factory()->create();
+        $screen = PostingResource::getUrl('view', ['record' => $posting]);
 
         Livewire::test(ListPostings::class)
             ->assertTableColumnExists(
                 'title',
-                fn (TextColumn $column): bool => $column->getUrl() === 'https://example-board.test/jobs/1'
-                    && $column->shouldOpenUrlInNewTab(),
+                fn (TextColumn $column): bool => $column->getUrl() === $screen
+                    && ! $column->shouldOpenUrlInNewTab(),
                 $posting,
             )
-            // The anchor and its target are Filament's, not a template's.
-            ->assertSeeHtml('href="https://example-board.test/jobs/1" target="_blank"');
+            // The anchor is Filament's, not a template's, and it stays in this
+            // tab: the owner is going further into the application.
+            ->assertSeeHtml('href="'.$screen.'"')
+            ->assertDontSeeHtml('href="'.$screen.'" target="_blank"');
     }
 
     /**
-     * A posting the capture could not name still has to be reachable, and the
-     * title is the cell a reader reaches for first.
+     * The way in belongs to the row rather than to a cell. A posting the
+     * capture could not name has no title to hang a link on and still has to
+     * be reachable.
+     */
+    public function test_a_row_opens_the_posting_it_names(): void
+    {
+        $this->signIn();
+
+        $named = Posting::factory()->create();
+        $unnamed = Posting::factory()->awaitingExtraction()->create();
+
+        $table = $this->listTable();
+
+        foreach ([$named, $unnamed] as $posting) {
+            $this->assertSame(
+                PostingResource::getUrl('view', ['record' => $posting]),
+                $table->getRecordUrl($posting),
+            );
+        }
+
+        Livewire::test(ListPostings::class)
+            ->assertSeeHtml('href="'.PostingResource::getUrl('view', ['record' => $unnamed]).'"');
+    }
+
+    /**
+     * None of them is a link, so a decision taken from a row stays on the
+     * list: the row is a way into the posting and the buttons on it are not.
+     */
+    public function test_the_record_actions_do_not_navigate(): void
+    {
+        $this->signIn();
+
+        $posting = Posting::factory()->create();
+
+        foreach ($this->listTable()->getRecordActions() as $action) {
+            if (! $action instanceof Action) {
+                $this->fail('A record action is not an action.');
+            }
+
+            $this->assertNull(
+                $action->record($posting)->getUrl(),
+                $action->getName().' navigates instead of acting',
+            );
+        }
+    }
+
+    /**
+     * The row's one outbound link, and the only way from the list to the
+     * board. It is on every row because `url` is the one field every capture
+     * carries, so a posting extraction could not name still reaches its
+     * advert. A new tab, because the owner is working through a list and must
+     * not lose their place in it.
      */
     public function test_the_source_links_out_to_the_posting_on_every_row(): void
     {
@@ -156,8 +209,8 @@ class PostingsListTest extends TestCase
     }
 
     /**
-     * The absent placeholder stays a placeholder and does not become a link to
-     * nowhere.
+     * The absent placeholder is a label for nothing, so it is not dressed as a
+     * link of its own. The row under it is that posting's way in.
      */
     public function test_a_posting_the_capture_could_not_name_carries_no_link_on_its_title(): void
     {
