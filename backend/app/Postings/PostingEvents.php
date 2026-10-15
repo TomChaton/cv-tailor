@@ -107,6 +107,35 @@ final readonly class PostingEvents
     }
 
     /**
+     * The owner has read the CV.
+     *
+     * The revision is which CV they read. A posting is reviewed once and the
+     * line is the record of when.
+     */
+    public function reviewed(Posting $posting, ?int $revisionId): void
+    {
+        $this->log->log('posting.reviewed', [
+            'posting_id' => $posting->id,
+            'revision_id' => $revisionId,
+        ]);
+    }
+
+    /**
+     * An application went in.
+     *
+     * **The revision is the point of the line.** It is the record of which CV
+     * an employer read, which is the one fact about an application that cannot
+     * be worked out again afterwards.
+     */
+    public function applied(Posting $posting, int $revisionId): void
+    {
+        $this->log->log('posting.applied', [
+            'posting_id' => $posting->id,
+            'revision_id' => $revisionId,
+        ]);
+    }
+
+    /**
      * A warning: a rejected capture is a posting the owner thinks they have.
      *
      * Field names only. The values are the page's own text, and the body

@@ -1418,9 +1418,8 @@ It shows:
 
 - Postings, filterable by status and source, and the actions that mark one as
   wanted, discard it, or hand back its CV. The screen calls them Jobs.
-- Per posting: the job description beside the current revision's PDF; the
-  requirements checklist (met / partial / gap, linked to evidence); validation
-  findings; the model's review notes.
+- A screen per posting, carrying whichever question that posting poses. See
+  A posting's own screen.
 - The revision tree, with diffs between any two revisions at two levels: a
   structural diff (items added, dropped, modes changed) and a text diff where
   wording differs.
@@ -1528,6 +1527,77 @@ here or it is never generated from.
   The rail is not what makes the list fit, though: the panel caps content
   width, so a screen wider than that cap gains nothing from collapsing. What
   makes the list fit is how few columns it has.
+
+### A posting's own screen
+
+The list is for choosing which posting to spend a generation on. This is where
+the posting itself is read: whether it is worth a CV, or whether the CV it has
+is good enough to send.
+
+- **One page, and the posting decides what is on it.** A posting with no
+  revision shows the job and the decision about it; one with a current revision
+  adds the review surface to the same page. The question a posting poses changes
+  when it gains a revision, so it is not a question the owner should have to
+  answer by picking a mode first — and a mode is a control that is wrong on
+  every posting but the one it was set for.
+- **The PDF is embedded beside the job description rather than downloaded**,
+  because reviewing is reading one document against another and a download for
+  every look is friction on the one screen the owner uses most. Download stays
+  as well: reading and keeping are different things.
+- **The PDF's route lives inside the panel**, registered through
+  `authenticatedRoutes` so it carries the panel's middleware and its login. The
+  CV is the owner's: the extension's bearer token is a credential for capturing
+  postings and not for reading what they produce, and a signed URL would be a
+  second credential for the same document, to keep in step with the first. The
+  route answers for the current revision and **404s where there is no PDF** — an
+  empty `200` would have the browser draw a blank frame, which reads as a CV
+  with nothing in it rather than one that was never produced.
+- **The checklist is ordered by what needs attention**: `must` before `nice`,
+  and within each, `gap` before `partial` before `met`. A gap against a
+  must-have is the single most useful thing on the page. Requirements that need
+  the same attention keep the order the model extracted them in, because that
+  order is its reading of the advert and reordering it would be the screen's own
+  opinion.
+- **Evidence is resolved against the master CV version the revision points at,
+  never the current one.** A revision is pinned to a version, and showing
+  today's wording beside an older revision would put words in front of the owner
+  that were never sent. The parse is re-derived from that version's stored raw
+  content for the same reason validation and rendering do it. An ID the version
+  does not hold stands as itself rather than being dropped: a citation nobody
+  can see is worse than an unresolved one.
+- **A requirement's priority and status are PHP enums, and the output schema is
+  built from them**, so the screen and the model's answer cannot come to
+  disagree about which values exist. An unreadable value is read as the one that
+  asks for the most attention, because a requirement nobody can classify must
+  not sort below one that is met.
+- **Findings are shown as the deterministic checks wrote them** — nothing
+  summarised, reworded or dropped, with the severity each was raised at beside
+  it. Those checks are what carry the fabrication guarantee, and a paraphrase of
+  one is a weaker claim than the thing itself. Review notes are the model's own
+  sentences for the same reason, presented as the model's words.
+- **Marking a posting applied records `applied_revision_id` as well as the
+  status**, in one conditional update, so a row cannot carry an applied status
+  without the revision that was applied. The column exists because the version
+  an employer actually read is the one that matters later, and a tracker that
+  knows a job was applied for but not with which CV is half a record.
+- **Neither tracker action moves a posting backwards**, and both read the status
+  they are conditional on — the idiom every other move of that column uses.
+  Applied is reachable from `reviewed` and from `ready`, because applying
+  without marking the CV read first is an ordinary thing to do and a step that
+  recorded nothing would be a step to skip.
+- **The job description is escaped before its line breaks are put back.** A
+  listing is untrusted input, and the lists and paragraph breaks extraction is
+  told to keep are part of what it says.
+- **It is a `Page` rather than a `ViewRecord`.** What it shows is one document
+  read against another rather than a record's own fields, and a record form
+  dehydrates every attribute of the posting — the captured page's whole text
+  among them — into the browser in order to show none of it.
+- **Want, Discard and Download come from the resource**, so the rules they are
+  offered under exist once rather than once per surface.
+- **Registering the page is what makes a row on the list lead to it.** Filament
+  points a record at its resource's view page where there is one, so nothing is
+  added to the list to reach this screen, and the title and the source keep
+  their own links out to the advert.
 
 ### The master CV page
 
@@ -1816,6 +1886,15 @@ goes where it is told, which has to be somewhere writable, and
   changes therefore renders the value from before it, and the page looks as
   though the action did nothing. Anything on a page that an action alters is
   passed as a closure, which is evaluated at render time.
+- **A page's record does not re-read itself after one of its own actions.** A
+  table re-queries its rows, so a row whose status an action changed comes back
+  as the database now has it; a page holds one model, and an action that writes
+  with a conditional update leaves that model exactly as it was built. The
+  actions whose own visibility turns on the value they wrote then go on
+  offering themselves, and the page reads as though nothing happened. So a
+  page's action refreshes its record afterwards — which is the other half of
+  passing anything an action changes to the schema as a closure: one makes the
+  schema ask again, the other gives it something new to find.
 - **A table filter decides which records that table's actions can act on.**
   Filament resolves the record an action was clicked on through the filtered
   query, so a row the filter excludes is a row whose actions refuse to run —
