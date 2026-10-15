@@ -9,11 +9,13 @@ use App\Models\Revision;
 use App\Models\User;
 use App\Postings\PostingStatus;
 use App\Revisions\RevisionStatus;
+use Filament\Actions\Action;
 use Filament\Actions\Testing\TestAction;
-use Filament\Support\Icons\Heroicon;
-use Filament\Tables\Columns\IconColumn;
+use Filament\Tables\Columns\Layout\Split;
+use Filament\Tables\Columns\Layout\Stack;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
+use Filament\Tables\Table;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
@@ -249,51 +251,87 @@ class PostingsListTest extends TestCase
     }
 
     /**
-     * Hidden text in a listing is sometimes aimed at AI tools, so the owner
-     * should know before trusting what was extracted.
+     * The identity of a posting is one cell, read downwards: the title is what
+     * a reader looks for and the company and location qualify it.
      */
-    public function test_the_hidden_text_warning_appears_only_where_the_capture_set_the_flag(): void
+    public function test_the_title_company_and_location_are_one_stacked_cell(): void
     {
         $this->signIn();
 
-        $hiding = Posting::factory()->withHiddenText()->create();
-        $plain = Posting::factory()->create();
+        $layout = $this->listTable()->getColumnsLayout();
 
-        Livewire::test(ListPostings::class)
-            ->assertTableColumnExists(
-                'has_hidden_text',
-                fn (IconColumn $column): bool => $column->getIcon($column->getState()) === Heroicon::ExclamationTriangle,
-                $hiding,
-            )
-            ->assertTableColumnExists(
-                'has_hidden_text',
-                fn (IconColumn $column): bool => $column->getIcon($column->getState()) === null,
-                $plain,
-            );
+        $this->assertCount(1, $layout);
+
+        $split = $layout[0];
+
+        if (! $split instanceof Split) {
+            $this->fail('The row is not laid out as a split.');
+        }
+
+        $stack = $split->getComponents()[0] ?? null;
+
+        if (! $stack instanceof Stack) {
+            $this->fail('The split does not open with a stack.');
+        }
+
+        $this->assertSame(['title', 'company', 'location'], array_keys($stack->getColumns()));
     }
 
     /**
-     * The owner asked for a cover letter for this job, which is worth knowing
-     * at a glance.
+     * The list is for choosing which posting to spend a generation on, and
+     * what a posting needs beyond that is the posting's own screen. So neither
+     * the cover letter request nor the hidden-text warning is a column here,
+     * though a capture still records both.
      */
-    public function test_the_cover_letter_mark_appears_only_where_one_was_asked_for(): void
+    public function test_the_list_carries_what_a_choice_needs_and_nothing_else(): void
     {
         $this->signIn();
 
-        $asked = Posting::factory()->withCoverLetterRequested()->create();
-        $plain = Posting::factory()->create();
+        $this->assertSame([
+            'title',
+            'company',
+            'location',
+            'salary_text',
+            'source_site',
+            'created_at',
+            'status',
+        ], array_keys($this->listTable()->getColumns()));
+    }
 
-        Livewire::test(ListPostings::class)
-            ->assertTableColumnExists(
-                'cover_letter_requested',
-                fn (IconColumn $column): bool => $column->getIcon($column->getState()) === Heroicon::Envelope,
-                $asked,
-            )
-            ->assertTableColumnExists(
-                'cover_letter_requested',
-                fn (IconColumn $column): bool => $column->getIcon($column->getState()) === null,
-                $plain,
-            );
+    /**
+     * Actions that read as text are easy to miss. As buttons they are each
+     * plainly a thing to press.
+     */
+    public function test_the_record_actions_are_buttons(): void
+    {
+        $this->signIn();
+
+        $actions = $this->listTable()->getRecordActions();
+
+        $this->assertNotEmpty($actions);
+
+        foreach ($actions as $action) {
+            if (! $action instanceof Action) {
+                $this->fail('A record action is not an action.');
+            }
+
+            $this->assertTrue($action->isButton(), $action->getName().' does not render as a button');
+        }
+    }
+
+    /**
+     * The table the list page assembles, which is where its columns, its
+     * layout and its actions are answered from.
+     */
+    private function listTable(): Table
+    {
+        $page = Livewire::test(ListPostings::class)->instance();
+
+        if (! $page instanceof ListPostings) {
+            $this->fail('The list page is not the component under test.');
+        }
+
+        return $page->getTable();
     }
 
     public function test_filtering_by_status_narrows_the_list(): void

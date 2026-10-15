@@ -13,9 +13,11 @@ use Filament\Actions\Action;
 use Filament\Resources\Pages\PageRegistration;
 use Filament\Resources\Resource;
 use Filament\Support\Enums\Alignment;
+use Filament\Support\Enums\FontWeight;
 use Filament\Support\Enums\Width;
 use Filament\Support\Icons\Heroicon;
-use Filament\Tables\Columns\IconColumn;
+use Filament\Tables\Columns\Layout\Split;
+use Filament\Tables\Columns\Layout\Stack;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
@@ -78,62 +80,61 @@ class PostingResource extends Resource
             // Newest first. Filament adds the key as a tiebreaker, so two
             // postings captured in the same second still order by capture.
             ->defaultSort('created_at', 'desc')
+            // A laid-out row has no headings to sort from, so Filament offers
+            // a sort control instead. Its first option is the table's own
+            // order, which is by capture, and naming it says so.
+            ->defaultSortOptionLabel(__('postings.columns.captured'))
             ->columns([
-                // Out to the advert, in a new tab: the owner is working
-                // through a list and deciding, and deciding means reading the
-                // page again. A posting the capture could not name has no
-                // text to hang a link on, so the placeholder stays a
-                // placeholder — the source column is that row's way out.
-                TextColumn::make('title')
-                    ->label(__('postings.columns.title'))
-                    ->placeholder(__('postings.absent'))
-                    ->url(
-                        fn (Posting $record): ?string => $record->title === null ? null : $record->url,
-                        shouldOpenInNewTab: true,
-                    )
-                    ->wrap(),
-                TextColumn::make('company')
-                    ->label(__('postings.columns.company'))
-                    ->placeholder(__('postings.absent')),
-                TextColumn::make('location')
-                    ->label(__('postings.columns.location'))
-                    ->placeholder(__('postings.absent')),
-                TextColumn::make('salary_text')
-                    ->label(__('postings.columns.salary'))
-                    ->placeholder(__('postings.absent')),
-                // Every row's way out to the page, whatever extraction made of
-                // it: `url` is the one thing every capture carries.
-                TextColumn::make('source_site')
-                    ->label(__('postings.columns.source'))
-                    ->url(fn (Posting $record): string => $record->url, shouldOpenInNewTab: true),
-                TextColumn::make('created_at')
-                    ->label(__('postings.columns.captured'))
-                    ->dateTime('j M Y, H:i')
-                    ->sortable(),
-                TextColumn::make('status')
-                    ->label(__('postings.columns.status'))
-                    ->badge()
-                    ->formatStateUsing(fn (PostingStatus $state): string => self::statusLabel($state)),
-                // A mark where the owner asked for a cover letter and nothing
-                // where they did not, for the same reason the hidden-text
-                // column draws only its warning.
-                IconColumn::make('cover_letter_requested')
-                    ->label(__('postings.columns.cover_letter'))
-                    ->boolean(false)
-                    ->icon(fn (bool $state): ?Heroicon => $state ? Heroicon::Envelope : null)
-                    ->color('primary'),
-                // A warning and nothing where there is nothing to warn about.
-                // Hidden text in a listing is sometimes aimed at AI tools, so
-                // the owner should know before trusting what was extracted.
-                IconColumn::make('has_hidden_text')
-                    ->label(__('postings.columns.hidden_text'))
-                    // Filament reads a boolean cast as a tick-or-cross
-                    // column. A cross on every ordinary posting says "no
-                    // hidden text" once a row and warns about nothing, so
-                    // the pair is turned off and only the warning is drawn.
-                    ->boolean(false)
-                    ->icon(fn (bool $state): ?Heroicon => $state ? Heroicon::ExclamationTriangle : null)
-                    ->color('warning'),
+                // One cell per posting, read downwards. Filament's own layout
+                // components are what stack a cell — the review UI has no
+                // utility classes to reach for — and a table handed one lays
+                // every row out as content rather than as cells, which is why
+                // the remaining fields sit in a split beside the stack and
+                // carry no heading of their own.
+                Split::make([
+                    Stack::make([
+                        // Out to the advert, in a new tab: the owner is
+                        // working through a list and deciding, and deciding
+                        // means reading the page again. A posting the capture
+                        // could not name has no text to hang a link on, so
+                        // the placeholder stays a placeholder — the source
+                        // is that row's way out.
+                        TextColumn::make('title')
+                            ->label(__('postings.columns.title'))
+                            ->placeholder(__('postings.absent'))
+                            // The title is what a reader looks for; the
+                            // company and location qualify it.
+                            ->weight(FontWeight::Bold)
+                            ->url(
+                                fn (Posting $record): ?string => $record->title === null ? null : $record->url,
+                                shouldOpenInNewTab: true,
+                            )
+                            ->wrap(),
+                        TextColumn::make('company')
+                            ->label(__('postings.columns.company'))
+                            ->placeholder(__('postings.absent')),
+                        TextColumn::make('location')
+                            ->label(__('postings.columns.location'))
+                            ->placeholder(__('postings.absent')),
+                    ])->space(1),
+                    TextColumn::make('salary_text')
+                        ->label(__('postings.columns.salary'))
+                        ->placeholder(__('postings.absent')),
+                    // Every row's way out to the page, whatever extraction
+                    // made of it: `url` is the one thing every capture
+                    // carries.
+                    TextColumn::make('source_site')
+                        ->label(__('postings.columns.source'))
+                        ->url(fn (Posting $record): string => $record->url, shouldOpenInNewTab: true),
+                    TextColumn::make('created_at')
+                        ->label(__('postings.columns.captured'))
+                        ->dateTime('j M Y, H:i')
+                        ->sortable(),
+                    TextColumn::make('status')
+                        ->label(__('postings.columns.status'))
+                        ->badge()
+                        ->formatStateUsing(fn (PostingStatus $state): string => self::statusLabel($state)),
+                ]),
             ])
             ->filters([
                 // The list opens on everything but `discarded`, stated as a
@@ -195,6 +196,7 @@ class PostingResource extends Resource
         return Action::make('want')
             ->label(__('postings.actions.want'))
             ->icon(Heroicon::Check)
+            ->button()
             ->visible(fn (Posting $record): bool => $record->status === PostingStatus::Captured)
             // Filament resolves a closure's typed parameters from the
             // container, which is how an action reaches a domain class on a
@@ -220,6 +222,7 @@ class PostingResource extends Resource
         return Action::make('discard')
             ->label(__('postings.actions.discard'))
             ->icon(Heroicon::XMark)
+            ->button()
             ->visible(fn (Posting $record): bool => $record->status !== PostingStatus::Discarded)
             ->modalHeading(__('postings.discard_confirmation.heading'))
             ->modalSubmitActionLabel(__('postings.discard_confirmation.confirm'))
@@ -243,6 +246,7 @@ class PostingResource extends Resource
         return Action::make('download')
             ->label(__('postings.actions.download'))
             ->icon(Heroicon::ArrowDownTray)
+            ->button()
             ->visible(fn (Posting $record): bool => $record->currentRevision?->pdf_path !== null)
             ->action(function (Posting $record, PdfStore $pdfs): ?StreamedResponse {
                 $revision = $record->currentRevision;

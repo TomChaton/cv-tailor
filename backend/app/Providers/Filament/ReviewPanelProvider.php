@@ -29,6 +29,12 @@ class ReviewPanelProvider extends PanelProvider
             ->colors([
                 'primary' => Color::Slate,
             ])
+            // Two items the owner knows by heart, against a list that is
+            // worth the width. The navigation collapses to its icons and the
+            // browser remembers the choice, so the sidebar is a rail the
+            // owner opens when they want it rather than a column standing
+            // beside every screen.
+            ->sidebarCollapsibleOnDesktop()
             // No dashboard is registered. Filament serves the panel's root by
             // sending the browser to the first item in the navigation, so the
             // postings list is what signing in arrives at; a dashboard would
