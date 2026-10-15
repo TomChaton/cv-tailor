@@ -10,6 +10,10 @@ namespace App\Postings;
  * Which part of that text is the job description is a judgement, and it is
  * made here rather than in the browser — a judgement made at capture time
  * cannot be revisited, because what was not stored cannot be re-read.
+ *
+ * `askedFor` is the one thing here the page did not say: what the owner chose
+ * when they captured it. A capture that omits it asked to keep the posting,
+ * which is what capture has always done.
  */
 final readonly class PostingCapture
 {
@@ -23,6 +27,7 @@ final readonly class PostingCapture
         public string $pageText,
         public bool $hasHiddenText,
         public ?array $jsonLd = null,
+        public AskedFor $askedFor = AskedFor::Save,
     ) {}
 
     /**

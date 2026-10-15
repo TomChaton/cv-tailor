@@ -13,7 +13,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return false;
   }
 
-  captureTab(message.tabId)
+  captureTab(message.tabId, message.askedFor)
     .then(sendResponse)
     .catch((thrown: unknown) => {
       log('capture failed', {

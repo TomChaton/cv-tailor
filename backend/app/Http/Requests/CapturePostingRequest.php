@@ -3,10 +3,13 @@
 namespace App\Http\Requests;
 
 use App\Http\Rules\IsJsonObject;
+use App\Postings\AskedFor;
 use App\Postings\PostingCapture;
 use App\Postings\PostingEvents;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Enum;
 
 class CapturePostingRequest extends FormRequest
 {
@@ -15,7 +18,7 @@ class CapturePostingRequest extends FormRequest
      * is generated from them, so a field added here reaches the extension's
      * client when the document is regenerated.
      *
-     * @return array<string, list<string|IsJsonObject>>
+     * @return array<string, list<string|Enum|IsJsonObject>>
      */
     public function rules(): array
     {
@@ -30,6 +33,8 @@ class CapturePostingRequest extends FormRequest
             'json_ld' => ['nullable', new IsJsonObject],
             /** Whether the page held text a reader cannot see. */
             'has_hidden_text' => ['required', 'boolean'],
+            /** What the owner asked for. Absent asks to keep the posting. */
+            'asked_for' => ['sometimes', Rule::enum(AskedFor::class)],
         ];
     }
 
@@ -41,6 +46,10 @@ class CapturePostingRequest extends FormRequest
             pageText: $this->string('page_text')->toString(),
             hasHiddenText: $this->boolean('has_hidden_text'),
             jsonLd: $this->jsonLd(),
+            // A capture that said nothing asked to keep the posting, so a
+            // caller that knows nothing about the field behaves as capture
+            // always has.
+            askedFor: $this->enum('asked_for', AskedFor::class) ?? AskedFor::Save,
         );
     }
 

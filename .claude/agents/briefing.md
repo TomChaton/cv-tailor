@@ -157,6 +157,20 @@ The extension and backend meet at one HTTP API, versioned under `/api/v1`.
   title, the company, the location, the salary and the job description are
   extraction's answer, worked out on the backend after the capture has landed.
   See the backend briefing.
+- **A capture carries what the owner asked for**, which is the one thing in it
+  the page did not say. Keeping a posting and asking for a CV for it are
+  decided in the same glance, on the job board, so the decision travels with
+  the capture rather than waiting for a second call into the review UI — making
+  it later, in another window, is a second visit to a job already read.
+- **It is one field with one value per choice, not a flag per choice.** Two
+  flags would let a capture ask for nothing to be generated and a cover letter
+  with it, which means nothing, and a third choice would need a third flag. The
+  field is named for the decision rather than for what the backend does with
+  it, and the value is a string the document enumerates, so the extension's
+  generated client cannot send a choice the backend does not have.
+- **A capture that omits the field asks to keep the posting**, which is what
+  capture has always done. A caller that knows nothing about the field
+  therefore behaves as it did before there was one.
 
 ## Data that never leaves the host
 

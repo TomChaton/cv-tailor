@@ -38,6 +38,15 @@
   "captureKept": {
     "message": "Kept, and sent again later"
   },
+  "popupSave": {
+    "message": "Save"
+  },
+  "popupCv": {
+    "message": "CV"
+  },
+  "popupCvAndCoverLetter": {
+    "message": "CV and cover letter"
+  },
   "popupSettings": {
     "message": "Settings"
   },

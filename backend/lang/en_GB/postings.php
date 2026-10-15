@@ -28,6 +28,7 @@ return [
         'source' => 'Source',
         'captured' => 'Captured',
         'status' => 'Status',
+        'cover_letter' => 'Cover letter',
         'hidden_text' => 'Hidden text',
     ],
 

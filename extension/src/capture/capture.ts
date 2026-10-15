@@ -6,7 +6,7 @@ import { showBadge } from './badge';
 import { landed, worthRetrying } from './outcome';
 import { defer, dueCaptures, enqueue, forget, queueDepth } from './queue';
 
-import type { ApiClient, PostingCapture } from '../api/client';
+import type { ApiClient, AskedFor, PostingCapture } from '../api/client';
 import type { CaptureOutcome } from './outcome';
 import type { PageRead } from './read-page-script';
 
@@ -14,7 +14,7 @@ import type { PageRead } from './read-page-script';
 const READ_PAGE_FILE = 'read-page.js';
 
 /**
- * Capture the page on one tab.
+ * Capture the page on one tab, asking the backend for what the owner clicked.
  *
  * The capture is queued before it is sent and removed once it lands, so a
  * capture is never lost — the worst case is one the owner is told was kept.
@@ -22,7 +22,13 @@ const READ_PAGE_FILE = 'read-page.js';
  * Nothing here judges what is on the page. Every page the owner captures is
  * sent, and what it advertises is the backend's answer.
  */
-export async function captureTab(tabId: number, now: number = Date.now()): Promise<CaptureOutcome> {
+export async function captureTab(
+  tabId: number,
+  askedFor: AskedFor,
+  now: number = Date.now(),
+): Promise<CaptureOutcome> {
+  log('capture started', { askedFor });
+
   const settings = await readSettings();
 
   if (settings === null) {
@@ -51,9 +57,15 @@ export async function captureTab(tabId: number, now: number = Date.now()): Promi
     return await report('page-blank');
   }
 
+  // The ask is the one thing in a capture the page did not say, and it is kept
+  // with the capture rather than beside it: a capture the backend never
+  // answered is retried from the queue, and it has to ask for the same thing
+  // then as it did now, or the owner's decision is quietly downgraded.
+  const posting: PostingCapture = { ...read.posting, asked_for: askedFor };
+
   const client = createApiClient(settings.baseUrl, settings.token);
-  const entry = await enqueue(read.posting, now);
-  const outcome = await send(client, read.posting);
+  const entry = await enqueue(posting, now);
+  const outcome = await send(client, posting);
 
   if (worthRetrying(outcome)) {
     await defer(entry.id, now);

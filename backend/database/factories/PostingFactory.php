@@ -31,6 +31,7 @@ class PostingFactory extends Factory
             'description' => $text,
             'extracted_at' => now(),
             'has_hidden_text' => false,
+            'cover_letter_requested' => false,
             'dedupe_hash' => hash('sha256', Str::random(32)),
             'status' => PostingStatus::Captured,
         ];
@@ -75,5 +76,14 @@ class PostingFactory extends Factory
     public function withHiddenText(): static
     {
         return $this->state(['has_hidden_text' => true]);
+    }
+
+    /**
+     * A posting the owner asked for a cover letter for. Nothing writes one;
+     * the column is the record of the request.
+     */
+    public function withCoverLetterRequested(): static
+    {
+        return $this->state(['cover_letter_requested' => true]);
     }
 }

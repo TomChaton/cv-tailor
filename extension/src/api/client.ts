@@ -15,6 +15,13 @@ export type PostingCapture = components['schemas']['CapturePostingRequest'];
 
 export type PostingStatus = components['schemas']['PostingStatus'];
 
+/**
+ * What the owner asked for: one value per action the popup offers. It comes
+ * from the document like everything else here, so a choice the backend adds or
+ * renames stops the popup compiling.
+ */
+export type AskedFor = components['schemas']['AskedFor'];
+
 export interface CapturedPosting {
   id: number;
   status: PostingStatus;

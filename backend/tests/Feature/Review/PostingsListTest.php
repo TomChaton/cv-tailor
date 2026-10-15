@@ -194,6 +194,30 @@ class PostingsListTest extends TestCase
             );
     }
 
+    /**
+     * The owner asked for a cover letter for this job, which is worth knowing
+     * at a glance.
+     */
+    public function test_the_cover_letter_mark_appears_only_where_one_was_asked_for(): void
+    {
+        $this->signIn();
+
+        $asked = Posting::factory()->withCoverLetterRequested()->create();
+        $plain = Posting::factory()->create();
+
+        Livewire::test(ListPostings::class)
+            ->assertTableColumnExists(
+                'cover_letter_requested',
+                fn (IconColumn $column): bool => $column->getIcon($column->getState()) === Heroicon::Envelope,
+                $asked,
+            )
+            ->assertTableColumnExists(
+                'cover_letter_requested',
+                fn (IconColumn $column): bool => $column->getIcon($column->getState()) === null,
+                $plain,
+            );
+    }
+
     public function test_filtering_by_status_narrows_the_list(): void
     {
         $this->signIn();

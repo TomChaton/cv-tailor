@@ -48,6 +48,27 @@ class OpenApiDocumentTest extends TestCase
     }
 
     /**
+     * Three choices do not fit a flag, and a second flag would let a capture
+     * ask for nothing and a cover letter with it, which means nothing.
+     */
+    public function test_a_capture_carries_one_optional_field_naming_what_was_asked_for(): void
+    {
+        $body = data_get($this->document(), 'components.schemas.CapturePostingRequest');
+
+        $this->assertIsArray($body);
+        $this->assertSame(
+            '#/components/schemas/AskedFor',
+            data_get($body, 'properties.asked_for.$ref'),
+        );
+        $this->assertNotContains('asked_for', (array) data_get($body, 'required'));
+
+        $this->assertSame(
+            ['save', 'cv', 'cv_and_cover_letter'],
+            data_get($this->document(), 'components.schemas.AskedFor.enum'),
+        );
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function document(): array

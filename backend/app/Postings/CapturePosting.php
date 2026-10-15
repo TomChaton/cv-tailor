@@ -19,12 +19,19 @@ use Illuminate\Contracts\Bus\Dispatcher;
  * capture that matched one already held asks nothing of a model — the answer is
  * already stored, and paying for it twice is what the dedupe hash exists to
  * avoid.
+ *
+ * **What the owner asked for is applied through the same actions the review UI
+ * uses**, so there is one place a posting becomes wanted and one event that
+ * says so. Neither action moves a posting backwards: a capture of a posting
+ * that has already been generated from, or discarded, leaves it where it is.
  */
 class CapturePosting
 {
     public function __construct(
         private readonly PostingEvents $events,
         private readonly Dispatcher $bus,
+        private readonly MarkPostingWanted $want,
+        private readonly RecordCoverLetterRequest $coverLetter,
     ) {}
 
     public function handle(PostingCapture $capture): CapturedPosting
@@ -47,6 +54,19 @@ class CapturePosting
             $this->bus->dispatch(new ExtractPostingFields($posting));
         } else {
             $this->events->duplicate($posting, $capture);
+        }
+
+        // Recorded whether or not the status moves. A second capture of a
+        // posting already past `captured` is the owner saying something new
+        // about a posting they already had.
+        if ($capture->askedFor->includesCoverLetter()) {
+            $this->coverLetter->handle($posting);
+        }
+
+        if ($capture->askedFor->includesCv() && $this->want->handle($posting)) {
+            // Marking is a conditional update, so the model in memory has not
+            // seen it — and the response says where the posting now is.
+            $posting->refresh();
         }
 
         return new CapturedPosting($posting->id, $posting->status, $isNew);

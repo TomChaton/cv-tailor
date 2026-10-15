@@ -2,23 +2,29 @@
 
 namespace Tests\Feature\Api;
 
+use App\Generation\QueuePostings;
 use App\Jobs\ExtractPostingFields;
 use App\Models\Posting;
 use App\Models\Revision;
 use App\Models\User;
 use App\Observability\EventLogger;
 use App\Owner\IssueExtensionToken;
+use App\Postings\AskedFor;
 use App\Postings\PostingStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Testing\TestResponse;
 use Mockery;
 use Mockery\MockInterface;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\HttpFoundation\Response;
+use Tests\Concerns\MasterCvFixtures;
 use Tests\TestCase;
 
 class CapturePostingTest extends TestCase
 {
+    use MasterCvFixtures;
     use RefreshDatabase;
 
     private const URI = '/api/v1/postings';
@@ -283,6 +289,7 @@ class CapturePostingTest extends TestCase
                 $posting = Posting::sole();
 
                 $this->assertSame($posting->id, $context['posting_id']);
+                $this->assertSame('save', $context['asked_for']);
                 $this->assertSame('jobs.example.com', $context['source_site']);
                 $this->assertSame($posting->dedupe_hash, $context['dedupe_hash']);
                 $this->assertFalse($context['has_hidden_text']);
@@ -292,8 +299,8 @@ class CapturePostingTest extends TestCase
                 // Never the page's own text or its URL: the row holds both and
                 // a log line does not need them.
                 $this->assertSame([
-                    'posting_id', 'source_site', 'dedupe_hash', 'has_hidden_text',
-                    'page_text_chars', 'has_json_ld',
+                    'posting_id', 'asked_for', 'source_site', 'dedupe_hash',
+                    'has_hidden_text', 'page_text_chars', 'has_json_ld',
                 ], array_keys($context));
 
                 return true;
@@ -315,6 +322,7 @@ class CapturePostingTest extends TestCase
             ->with('posting.duplicate', Mockery::on(function (array $context): bool {
                 $this->assertSame([
                     'posting_id' => Posting::sole()->id,
+                    'asked_for' => 'save',
                     'source_site' => 'jobs.example.com',
                 ], $context);
 
@@ -366,6 +374,237 @@ class CapturePostingTest extends TestCase
 
         $this->capture($this->payload(['page_text' => str_repeat('x', 1024)]))
             ->assertStatus(413);
+    }
+
+    /**
+     * The popup offers three actions and the owner clicked the first: a posting
+     * worth keeping a look at, and no decision to spend taken yet.
+     */
+    public function test_saving_leaves_the_posting_at_captured(): void
+    {
+        $this->capture($this->payload(['asked_for' => 'save']))
+            ->assertCreated()
+            ->assertExactJson(['id' => Posting::sole()->id, 'status' => 'captured']);
+
+        $this->assertFalse(Posting::sole()->cover_letter_requested);
+    }
+
+    /**
+     * A capture that says nothing behaves as Save, so a caller that knows
+     * nothing about the field captures exactly as capture always has.
+     */
+    public function test_a_capture_that_names_no_action_behaves_as_saving(): void
+    {
+        $payload = $this->payload();
+
+        $this->assertArrayNotHasKey('asked_for', $payload);
+
+        $this->capture($payload)->assertCreated();
+
+        $this->assertSame(PostingStatus::Captured, Posting::sole()->status);
+        $this->assertFalse(Posting::sole()->cover_letter_requested);
+    }
+
+    public function test_asking_for_a_cv_captures_the_posting_as_wanted(): void
+    {
+        $this->capture($this->payload(['asked_for' => 'cv']))
+            ->assertCreated()
+            ->assertExactJson(['id' => Posting::sole()->id, 'status' => 'wanted']);
+
+        $this->assertSame(PostingStatus::Wanted, Posting::sole()->status);
+        $this->assertFalse(Posting::sole()->cover_letter_requested);
+    }
+
+    public function test_asking_for_a_cv_and_a_cover_letter_records_the_letter_as_well(): void
+    {
+        $this->capture($this->payload(['asked_for' => 'cv_and_cover_letter']))
+            ->assertCreated()
+            ->assertExactJson(['id' => Posting::sole()->id, 'status' => 'wanted']);
+
+        $this->assertTrue(Posting::sole()->cover_letter_requested);
+    }
+
+    /**
+     * The column records the request and nothing reads it on the way to a
+     * model. A letter is a request of its own, and nothing writes one.
+     */
+    public function test_asking_for_a_cover_letter_generates_nothing(): void
+    {
+        $this->capture($this->payload(['asked_for' => 'cv_and_cover_letter']))->assertCreated();
+
+        $this->assertSame(0, Revision::count());
+        $this->assertNull(Posting::sole()->current_revision_id);
+    }
+
+    /**
+     * `wanted` is what the sweep reads, so a capture that asked for a CV is a
+     * posting the next run generates from — and one that did not is left where
+     * it is for ever.
+     */
+    #[DataProvider('actionsAndWhetherTheSweepTakesThem')]
+    public function test_the_sweep_takes_what_the_owner_asked_for(string $action, int $expected): void
+    {
+        $this->storeMasterCv('master-cv/minimal.md');
+
+        $this->capture($this->payload(['asked_for' => $action]))->assertCreated();
+
+        // As extraction would leave it. The sweep takes a posting there is a
+        // job description for, and capture never has one.
+        Posting::sole()->update(['description' => 'We are looking for a PHP engineer.']);
+
+        $this->assertSame($expected, app(QueuePostings::class)->handle()->postings);
+        $this->assertSame($expected, Revision::count());
+    }
+
+    /**
+     * @return iterable<string, array{string, int}>
+     */
+    public static function actionsAndWhetherTheSweepTakesThem(): iterable
+    {
+        yield 'save' => ['save', 0];
+        yield 'cv' => ['cv', 1];
+        yield 'cv and cover letter' => ['cv_and_cover_letter', 1];
+    }
+
+    /**
+     * The owner has made the decision they were offered, on a posting they had
+     * already captured.
+     */
+    public function test_asking_for_a_cv_for_a_posting_already_captured_makes_it_wanted(): void
+    {
+        $this->capture()->assertCreated();
+
+        $this->capture($this->payload(['asked_for' => 'cv']))
+            ->assertOk()
+            ->assertExactJson(['id' => Posting::sole()->id, 'status' => 'wanted']);
+
+        $this->assertSame(1, Posting::count());
+    }
+
+    /**
+     * One event for one decision: the same line the review UI's Want action
+     * writes, and written once however it was reached.
+     */
+    public function test_a_capture_that_asks_for_a_cv_logs_the_posting_as_wanted_once(): void
+    {
+        $log = Log::spy();
+
+        $this->capture($this->payload(['asked_for' => 'cv']))->assertCreated();
+        $this->capture($this->payload(['asked_for' => 'cv']))->assertOk();
+
+        $log->shouldHaveReceived('log')->withArgs(
+            fn (string $level, string $message, array $context): bool => $message === 'posting.wanted'
+                && $context['event'] === 'posting.wanted'
+                && $context['posting_id'] === Posting::sole()->id,
+        )->once();
+    }
+
+    public function test_a_capture_that_asks_for_nothing_logs_no_posting_as_wanted(): void
+    {
+        $log = Log::spy();
+
+        $this->capture()->assertCreated();
+
+        $log->shouldNotHaveReceived('log', [Mockery::any(), 'posting.wanted', Mockery::any()]);
+    }
+
+    /**
+     * Every later state either already has a revision or is the owner's own
+     * verdict on one, and `discarded` is the owner's too: a capture is not an
+     * appeal.
+     */
+    #[DataProvider('statusesACaptureDoesNotMove')]
+    public function test_asking_for_a_cv_never_moves_a_posting_backwards(PostingStatus $status): void
+    {
+        $this->capture()->assertCreated();
+
+        Posting::sole()->update(['status' => $status]);
+
+        $this->capture($this->payload(['asked_for' => 'cv']))
+            ->assertOk()
+            ->assertExactJson(['id' => Posting::sole()->id, 'status' => $status->value]);
+
+        $this->assertSame($status, Posting::sole()->status);
+    }
+
+    /**
+     * @return iterable<string, array{PostingStatus}>
+     */
+    public static function statusesACaptureDoesNotMove(): iterable
+    {
+        foreach (PostingStatus::cases() as $status) {
+            if ($status !== PostingStatus::Captured) {
+                yield $status->value => [$status];
+            }
+        }
+    }
+
+    /**
+     * The owner has said something new about a posting they already had, and
+     * the status being left alone is not a reason to throw it away.
+     */
+    public function test_a_cover_letter_is_recorded_even_where_the_status_is_left_alone(): void
+    {
+        $this->capture()->assertCreated();
+
+        Posting::sole()->update(['status' => PostingStatus::Applied]);
+
+        $this->capture($this->payload(['asked_for' => 'cv_and_cover_letter']))->assertOk();
+
+        $this->assertSame(PostingStatus::Applied, Posting::sole()->status);
+        $this->assertTrue(Posting::sole()->cover_letter_requested);
+    }
+
+    /**
+     * A posting the owner asked a letter for has asked for one. A later capture
+     * of the same page asking for less has not unasked.
+     */
+    public function test_a_later_capture_does_not_withdraw_the_request(): void
+    {
+        $this->capture($this->payload(['asked_for' => 'cv_and_cover_letter']))->assertCreated();
+
+        $this->capture($this->payload(['asked_for' => 'save']))->assertOk();
+
+        $this->assertTrue(Posting::sole()->cover_letter_requested);
+    }
+
+    public function test_an_action_the_popup_does_not_offer_is_refused(): void
+    {
+        $this->capture($this->payload(['asked_for' => 'cover_letter']))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['asked_for']);
+
+        $this->assertSame(0, Posting::count());
+    }
+
+    public function test_it_logs_which_of_the_three_actions_was_asked_for(): void
+    {
+        $log = Log::spy();
+
+        $this->capture($this->payload(['asked_for' => 'cv_and_cover_letter']))->assertCreated();
+
+        $log->shouldHaveReceived('log')->withArgs(
+            fn (string $level, string $message, array $context): bool => $message === 'posting.captured'
+                && $context['asked_for'] === AskedFor::CvAndCoverLetter->value,
+        )->once();
+    }
+
+    /**
+     * A second capture is how a posting the owner already had comes to be
+     * wanted or to carry a request for a letter, so the duplicate line says
+     * what was asked for too.
+     */
+    public function test_it_logs_what_a_second_capture_asked_for(): void
+    {
+        $log = Log::spy();
+
+        $this->capture()->assertCreated();
+        $this->capture($this->payload(['asked_for' => 'cv_and_cover_letter']))->assertOk();
+
+        $log->shouldHaveReceived('log')->withArgs(
+            fn (string $level, string $message, array $context): bool => $message === 'posting.duplicate'
+                && $context['asked_for'] === 'cv_and_cover_letter',
+        )->once();
     }
 
     /**
