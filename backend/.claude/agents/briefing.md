@@ -1731,6 +1731,12 @@ the document says which exist.
   however little of what it says resolves.
 - **A finding naming no remedy this page can offer carries no control.** A
   finding this page cannot act on must not suggest otherwise.
+- **The fix is offered once for a row, on the first of its findings.** A cell
+  naming several things the document does not hold raises one finding per part,
+  and each is worth reading because each names a different missing part. The
+  fix is not, because it rewrites the whole cell: a second button beside the
+  first opens the same question and writes the same answer. So the findings
+  stay as they are, each selecting its line, and only the control is collapsed.
 - **The line that records a fix carries the finding's level**, so one applied to
   a note is distinguishable from one applied to a problem. Counts and outcomes
   only: never the row, the names chosen, or anything else the document says.

@@ -441,10 +441,12 @@ class MasterCvPageTest extends TestCase
 
     /**
      * A cell may name more than one thing the file does not hold, and each is
-     * its own note. Every one of them asks the same question about the same
-     * row, so every one of them carries the way to answer it.
+     * its own note: they name different missing parts, and each is worth
+     * reading. The fix is not duplicated along with them. It rewrites the
+     * whole cell, so the row carries one of them however many of its parts
+     * are wrong, on the first of its notes and on none of the others.
      */
-    public function test_each_note_on_one_row_carries_the_choice(): void
+    public function test_a_row_naming_two_absent_things_raises_two_notes_and_one_fix(): void
     {
         $this->signIn();
         $this->storeMarkdown($this->withTwoNotedPartsOnOneRow());
@@ -453,11 +455,19 @@ class MasterCvPageTest extends TestCase
         $this->assertCount(2, $notes);
 
         $html = $this->render();
+        $items = [];
 
         foreach ($notes as $note) {
+            $this->assertNotNull($note->line);
             $this->assertStringContainsString(e($note->message), $html);
-            $this->assertStringContainsString("mountAction('whereUsed_php-7x-70-74'", $this->item($html, $note->message));
+
+            $items[] = $item = $this->item($html, $note->message);
+            $this->assertStringContainsString('selectLine('.$note->line.')', $item);
         }
+
+        $this->assertCount(1, $this->choices($html));
+        $this->assertStringContainsString("mountAction('whereUsed_php-7x-70-74'", $items[0]);
+        $this->assertStringNotContainsString("mountAction('whereUsed", $items[1]);
 
         Livewire::test(MasterCvPage::class)
             ->callAction($this->whereUsed('php-7x-70-74'), ['where_used' => ['harlequin-transit']])
@@ -760,17 +770,25 @@ class MasterCvPageTest extends TestCase
     }
 
     /**
-     * The control that opens the guided fix, markup and all.
+     * The one control that opens the guided fix, markup and all.
      */
     private function choice(string $html): string
     {
-        $matched = preg_match(
-            '#<button[^>]*mountAction\(\x27whereUsed[^>]*>.*?</button>#s',
-            $html,
-            $matches,
-        );
+        $choices = $this->choices($html);
 
-        $this->assertSame(1, $matched, 'No control opens a guided fix.');
+        $this->assertCount(1, $choices, 'The page does not hold exactly one guided fix.');
+
+        return $choices[0];
+    }
+
+    /**
+     * Every control on the page that opens a guided fix.
+     *
+     * @return list<string>
+     */
+    private function choices(string $html): array
+    {
+        preg_match_all('#<button[^>]*mountAction\(\x27whereUsed[^>]*>.*?</button>#s', $html, $matches);
 
         return $matches[0];
     }

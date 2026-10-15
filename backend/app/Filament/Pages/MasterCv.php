@@ -278,14 +278,20 @@ class MasterCv extends Page
             return [];
         }
 
+        // The skills-index rows this page has already drawn a fix for. A
+        // fix rewrites the whole row, so a row carries one however many of
+        // its parts are wrong. It is built here and discarded here: a fact
+        // about one render of the list, not state the page keeps.
+        $fixed = [];
+
         return [
             Section::make()
                 ->heading(__('master-cv.problems'))
-                ->schema($this->problems($report)),
+                ->schema($this->problems($report, $fixed)),
             ...($report->notes() === [] ? [] : [
                 Section::make()
                     ->heading(__('master-cv.notes'))
-                    ->schema($this->groupedByCheck($report->notesByCheck())),
+                    ->schema($this->groupedByCheck($report->notesByCheck(), $fixed)),
             ]),
         ];
     }
@@ -294,22 +300,24 @@ class MasterCv extends Page
      * An empty problem list says the CV is fit to generate from, and nothing
      * else.
      *
+     * @param  list<string>  $fixed
      * @return list<Component>
      */
-    private function problems(MasterCvReport $report): array
+    private function problems(MasterCvReport $report, array &$fixed): array
     {
         if ($report->passes()) {
             return [Text::make(__('master-cv.passes'))];
         }
 
-        return $this->groupedByCheck($report->problemsByCheck());
+        return $this->groupedByCheck($report->problemsByCheck(), $fixed);
     }
 
     /**
      * @param  array<string, list<Finding>>  $groups
+     * @param  list<string>  $fixed
      * @return list<Component>
      */
-    private function groupedByCheck(array $groups): array
+    private function groupedByCheck(array $groups, array &$fixed): array
     {
         $fieldsets = [];
 
@@ -318,7 +326,12 @@ class MasterCv extends Page
                 ->columns(1)
                 ->schema([
                     UnorderedList::make(array_map(
-                        fn (Finding $finding, int $position): Component => $this->finding($finding, $position),
+                        // Not an arrow function: the set of rows already
+                        // offered a fix is carried by reference, and an
+                        // arrow function would capture a copy of it.
+                        function (Finding $finding, int $position) use (&$fixed): Component {
+                            return $this->finding($finding, $position, $fixed);
+                        },
                         $findings,
                         array_keys($findings),
                     ))
@@ -353,8 +366,10 @@ class MasterCv extends Page
      * Notes carry the same controls as problems. One fails the CV and the
      * other does not, and neither fact has anything to do with finding the
      * line or with correcting the row.
+     *
+     * @param  list<string>  $fixed  Rows this page has already offered a fix for
      */
-    private function finding(Finding $finding, int $position): Component
+    private function finding(Finding $finding, int $position, array &$fixed): Component
     {
         // The messages are the linter's own words, written for the CV's
         // author rather than for a developer, so they are the one thing on
@@ -363,7 +378,7 @@ class MasterCv extends Page
 
         $controls = array_values(array_filter([
             $this->lineControl($finding, $position),
-            $this->whereUsedFix($finding),
+            $this->whereUsedFix($finding, $fixed),
         ]));
 
         return $controls === []
@@ -398,11 +413,19 @@ class MasterCv extends Page
      * sibling that happened to match. A finding naming no remedy this page
      * can offer shows no control suggesting otherwise.
      *
+     * Offered once for a row, on the first of its findings. A row may name
+     * several things the document does not hold and each of them is its own
+     * finding, worth reading on its own; the fix is not, because it rewrites
+     * the whole cell. A second button beside the first would open the same
+     * modal and write the same answer.
+     *
      * Everything the modal offers is built when it opens, from the CV in the
      * editor, so the choices are the document's own and an answer that is not
      * in the document cannot be given.
+     *
+     * @param  list<string>  $fixed  Rows already offered one, which this adds to
      */
-    private function whereUsedFix(Finding $finding): ?Action
+    private function whereUsedFix(Finding $finding, array &$fixed): ?Action
     {
         if ($finding->remedy !== Remedy::ChooseWhereUsed || $finding->line === null) {
             return null;
@@ -415,6 +438,12 @@ class MasterCv extends Page
         }
 
         $id = $reported->id;
+
+        if (in_array($id, $fixed, true)) {
+            return null;
+        }
+
+        $fixed[] = $id;
 
         return Action::make('whereUsed_'.$id)
             ->label(__('master-cv.actions.where_used'))
