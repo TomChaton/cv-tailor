@@ -78,7 +78,12 @@ reached over Tailscale; nothing in the application depends on that.
 - **One application image, several roles.** `app` (FrankenPHP serving the API
   and review UI), `worker` (`queue:work`), and `scheduler` (`schedule:work`)
   run the same image with different commands. `gotenberg` is a separate
-  service so Chromium stays out of the PHP image.
+  service so Chromium stays out of the PHP image. **The image carries the
+  source** rather than bind-mounting it, so the three roles cannot drift from
+  each other and a deploy is one artefact. The consequence for anybody running
+  a change is that no edit is live until the image is built again: a stack
+  brought up without `--build` serves the previous build, whatever the working
+  copy says.
 - **Images must run on `amd64` without AVX2.** The reference host is an Intel
   Ivy Bridge machine. Images that require x86-64-v3 fail there with illegal
   instruction errors, so every image is checked before it is adopted, and
@@ -311,8 +316,7 @@ an instance somebody else hosts is set up.
 
 | Task | Command |
 | --- | --- |
-| Build and start the stack | `docker compose up -d --build` |
-| Rebuild after a dependency change | `docker compose build` |
+| Start the stack, and pick up any change to it | `docker compose up -d --build` |
 | Stop it | `docker compose down` |
 | Stop it and discard its data | `docker compose down -v` |
 | See what is running | `docker compose ps` |
