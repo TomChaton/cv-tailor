@@ -61,6 +61,22 @@ describe('capturePosting', () => {
     expect(await request.json()).toEqual(capture);
   });
 
+  /**
+   * JSON is the one content type this client speaks. The backend answers a
+   * refusal as JSON whatever a caller says it accepts, so this is politeness
+   * rather than a dependency — but a client that states nothing is a client
+   * relying on a server's default.
+   */
+  it('says it accepts json', async () => {
+    const fetch = stubFetch(answer(201, { id: 12, status: 'captured' }));
+
+    await createApiClient('https://cv-tailor.example.net', 'token-abc').capturePosting(capture);
+
+    const request = fetch.mock.calls[0]![0] as Request;
+
+    expect(request.headers.get('Accept')).toBe('application/json');
+  });
+
   it('reads a new posting off 201', async () => {
     stubFetch(answer(201, { id: 12, status: 'captured' }));
 

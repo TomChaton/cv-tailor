@@ -61,7 +61,10 @@ export interface ApiClient {
 export function createApiClient(baseUrl: string, token: string): ApiClient {
   const client = createClient<paths>({
     baseUrl,
-    headers: { Authorization: `Bearer ${token}` },
+    // JSON is the one content type this client speaks, and the generated
+    // schema is where that comes from, so it says so rather than relying on
+    // whatever a server does with a request that states nothing.
+    headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
   });
 
   return {

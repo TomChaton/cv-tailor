@@ -140,6 +140,17 @@ The extension and backend meet at one HTTP API, versioned under `/api/v1`.
   document then describes every installation. A document carrying whichever
   `APP_URL` the person who exported it happened to have would be wrong
   everywhere else.
+- **A refusal is always JSON, and the API never redirects.** The framework's
+  own default sends an unauthenticated visitor to a route named `login`, which
+  assumes an application with a web login route; this one's login belongs to a
+  panel, so where a guest is sent is configured — nothing for `api/*`, and the
+  panel's login route, named rather than pathed, for everything else. The API
+  is answered rather than redirected because a client cannot act on a redirect:
+  an API that redirects a rejected token answers a permanent refusal with
+  something the caller reads as the backend's own fault, and a client that
+  retries the backend's faults then retries that refusal for ever. Nothing in
+  the answer may depend on what the caller said it accepts, either — a caller
+  that states nothing is not a caller to be guessed at.
 - **Capturing a job is idempotent.** The extension may retry; the backend
   deduplicates (see the backend briefing) and returns the existing job rather
   than creating a second.
