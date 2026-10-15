@@ -19,6 +19,7 @@ use App\Llm\CostCalculator;
 use App\Llm\LlmClient;
 use App\Llm\LlmEvents;
 use App\Llm\LlmFailure;
+use App\Llm\LlmReply;
 use App\Llm\LlmRequest;
 use App\Llm\LlmResponse;
 use App\Llm\TokenUsage;
@@ -138,7 +139,7 @@ final class AnthropicLlmClient implements LlmClient
             throw $this->fail($params->model, $exception);
         }
 
-        $response = $this->response($message, batched: false);
+        $response = $this->cost->price($params->model, $this->reply($message), batched: false);
 
         $this->events->request($request->purpose, $response);
 
@@ -157,7 +158,10 @@ final class AnthropicLlmClient implements LlmClient
         return match (true) {
             $result instanceof MessageBatchSucceededResult => BatchResult::succeeded(
                 $line->customID,
-                $this->response($result->message, batched: true),
+                // Unpriced: a result says which build served it, and the model
+                // its request asked for is recorded on the revision rather
+                // than in the batch.
+                $this->reply($result->message),
             ),
             $result instanceof MessageBatchErroredResult => BatchResult::errored(
                 $line->customID,
@@ -171,21 +175,22 @@ final class AnthropicLlmClient implements LlmClient
         };
     }
 
-    private function response(Message $message, bool $batched): LlmResponse
+    /**
+     * The provider's answer, carrying the model it reports rather than the one
+     * it was asked about.
+     */
+    private function reply(Message $message): LlmReply
     {
-        $usage = new TokenUsage(
-            inputTokens: $message->usage->inputTokens,
-            outputTokens: $message->usage->outputTokens,
-            cacheWriteTokens: $message->usage->cacheCreationInputTokens ?? 0,
-            cacheReadTokens: $message->usage->cacheReadInputTokens ?? 0,
-        );
-
-        return new LlmResponse(
-            model: $message->model,
+        return new LlmReply(
+            reportedModel: $message->model,
             text: $this->text($message),
             stopReason: $message->stopReason,
-            usage: $usage,
-            costMicros: $this->cost->micros($message->model, $usage, $batched),
+            usage: new TokenUsage(
+                inputTokens: $message->usage->inputTokens,
+                outputTokens: $message->usage->outputTokens,
+                cacheWriteTokens: $message->usage->cacheCreationInputTokens ?? 0,
+                cacheReadTokens: $message->usage->cacheReadInputTokens ?? 0,
+            ),
         );
     }
 

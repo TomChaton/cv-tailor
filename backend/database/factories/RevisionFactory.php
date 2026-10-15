@@ -9,6 +9,7 @@ use App\Models\Revision;
 use App\Revisions\RevisionSource;
 use App\Revisions\RevisionStatus;
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Support\Facades\Config;
 
 /**
  * @extends Factory<Revision>
@@ -26,8 +27,12 @@ class RevisionFactory extends Factory
             'master_cv_version_id' => MasterCvVersion::factory(),
             'source' => RevisionSource::Generated,
             'instructions' => null,
-            // No test reaches a live model, so this names no real one.
-            'model' => 'test-model',
+            // The model a revision records is one the system could price: a
+            // revision waiting for a result records what it asked for, and a
+            // collected result is priced from that name. A fiction would have
+            // no configured rate. No test reaches a live model regardless —
+            // the fake client is what `LlmClient` is bound to here.
+            'model' => Config::string('cv.llm.models.generation'),
             'prompt_version' => PromptVersion::CURRENT,
             'status' => RevisionStatus::Pending,
             'attempts' => 0,

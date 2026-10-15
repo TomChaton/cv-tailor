@@ -4,6 +4,7 @@ namespace Tests\Unit\Llm;
 
 use App\Llm\CostCalculator;
 use App\Llm\CostRates;
+use App\Llm\LlmReply;
 use App\Llm\TokenUsage;
 use App\Llm\UnknownModel;
 use InvalidArgumentException;
@@ -101,6 +102,65 @@ class CostCalculatorTest extends TestCase
             new TokenUsage(1, 1, 0, 0),
             batched: false,
         );
+    }
+
+    /**
+     * The name the provider answers with is a dated build of the alias that
+     * was asked for, and nothing is configured under it. Pricing reads the
+     * requested name, and the reply's own name travels on untouched.
+     */
+    public function test_a_reply_is_priced_from_the_requested_model_and_not_the_reported_one(): void
+    {
+        $response = $this->calculator()->price(
+            'test-model',
+            new LlmReply(
+                reportedModel: 'test-model-20260101',
+                text: 'the answer',
+                stopReason: 'end_turn',
+                usage: new TokenUsage(
+                    inputTokens: 1_000_000,
+                    outputTokens: 0,
+                    cacheWriteTokens: 0,
+                    cacheReadTokens: 0,
+                ),
+            ),
+            batched: false,
+        );
+
+        $this->assertSame(5_000_000, $response->costMicros);
+        $this->assertSame('test-model', $response->requestedModel);
+        $this->assertSame('test-model-20260101', $response->reportedModel);
+        $this->assertSame('the answer', $response->text);
+        $this->assertSame('end_turn', $response->stopReason);
+    }
+
+    public function test_pricing_a_reply_against_an_unconfigured_model_raises_naming_that_model(): void
+    {
+        $reply = new LlmReply(
+            reportedModel: 'test-model',
+            text: 'the answer',
+            stopReason: 'end_turn',
+            usage: new TokenUsage(1, 1, 0, 0),
+        );
+
+        try {
+            $this->calculator()->price('model-nobody-configured', $reply, batched: false);
+
+            $this->fail('A model with no configured rate was priced anyway.');
+        } catch (UnknownModel $raised) {
+            // The requested name, because that is the one the owner can act
+            // on: the reported one was never theirs to configure.
+            $this->assertStringContainsString('model-nobody-configured', $raised->getMessage());
+            $this->assertStringNotContainsString('reported', $raised->getMessage());
+        }
+    }
+
+    public function test_it_says_whether_a_model_has_a_rate_at_all(): void
+    {
+        $calculator = $this->calculator();
+
+        $this->assertTrue($calculator->hasRates('test-model'));
+        $this->assertFalse($calculator->hasRates('test-model-20260101'));
     }
 
     public function test_it_reads_rates_from_configuration(): void

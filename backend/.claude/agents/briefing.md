@@ -613,6 +613,15 @@ the company, the location, the salary and the job description itself.
   records that decision rather than starting a generation. The job logs the
   failure and rethrows, so the queue retries it on its own terms, and the sweep
   acts on the marking once there is a description.
+- **A posting extraction never answered can be asked about again**, in bulk
+  and without being captured again — `cv:extract`. The attempts the queue
+  gives a posting are spent against whatever stopped it, and what is usually
+  left to change is configuration: a key that was not set, a model with no
+  rate, a provider that was unreachable. Fixing one of those has to reach every
+  posting that was waiting on it, which is the same shape as a master CV being
+  corrected and the next sweep queueing everything that was blocked. It
+  dispatches the ordinary extraction job, so a posting read again emits exactly
+  the events it did the first time.
 - **A posting already extracted is left alone.** A duplicate dispatch is the
   ordinary consequence of a retried job, and a second reading of the same page
   would be paid for twice to reach the same answer. `extracted_at` is what the
@@ -998,6 +1007,35 @@ application that names a provider type.
   change without notice, and a rate compiled into the code misreports forever
   with nothing in the system to say so. A model with no configured rate raises
   rather than costing nothing.
+- **Rates are keyed by the model the application asked for, and the cost is
+  computed from that name** — never from the name the response reports. Every
+  model is configured as an alias; the alias is what the owner chose and what
+  the published price belongs to; the provider resolves it to a dated build and
+  answers about that. A rate keyed on the dated name would be a rate configured
+  for a model the owner never named, and it would rot on its own, because the
+  build behind an alias changes with nobody doing anything. So the lookup is
+  given the requested name, and a requested model with no rate still raises —
+  naming a model the owner can act on.
+- **Two model names exist, and each has one job.** The *requested* model is
+  what was asked for and what a cost was computed from. The *reported* model is
+  the build the provider says served the request: it is the only record of what
+  actually ran, and it is what a revision stores when its output is stored.
+  Anything holding one of the two says which — in a log line, in a parameter
+  name, in a column's meaning — because a name that could be either cannot be
+  used to check a bill.
+- **A collected batch result is priced from the model recorded on the
+  revision**, which a submission writes when it claims the revision. A batch's
+  results arrive without the requests that asked for them, so a result priced
+  from the name it reports is the same mistake on the path the money is
+  actually on. Pricing happens before the submission row is claimed: a missing
+  rate then leaves the row awaiting and the result still applicable once the
+  rate is configured, where raising after the claim would close the batch over
+  output that had been paid for.
+- **Whether every configured model has a rate is a precondition**, knowable
+  without calling anybody, so `cv:status` reports each purpose, its model and
+  whether that model has a rate — beside whether the API key is set. The
+  alternative is learning it from a purpose that spends its attempts failing
+  and leaves a posting with no title.
 - **Cost is computed and returned in integer micros**, matching the
   `cost_micros` column: money is never a float, and a rate is expressed per
   million tokens so the arithmetic stays integer. The division is rounded up,
@@ -1561,6 +1599,7 @@ toolchain:
 | Seed both from the environment | `docker compose exec app php artisan cv:seed-credentials` |
 | Check the master CV | `docker compose exec app php artisan cv:lint` |
 | Import a master CV from a file | `docker compose exec app php artisan cv:import /tmp/master-cv.md` |
+| Ask again about every posting extraction has not answered | `docker compose exec app php artisan cv:extract` |
 | Queue the postings marked as wanted | `docker compose exec app php artisan cv:queue` |
 | Submit every pending revision as one batch | `docker compose exec app php artisan cv:batch-submit` |
 | Collect the results of every finished batch | `docker compose exec app php artisan cv:batch-poll` |
@@ -1596,6 +1635,11 @@ are how one is set up. The command is always successful: a stack that will not
 start is a worse answer to a credential it could not use than a stack that
 starts with the reason in its log.
 
+`cv:extract` is not scheduled: the queue retries extraction on its own terms,
+and once those attempts are spent what is left to change is configuration. It
+is how a configuration that has been fixed reaches the postings that were
+waiting on it.
+
 `cv:batch-submit` and `cv:batch-poll` are scheduled as well, and run by hand
 when somebody wants the answer now. `cv:batch-resume` is the only way to clear
 a halted submitter, and `cv:status` is where the halt is visible.
@@ -1619,6 +1663,13 @@ goes where it is told, which has to be somewhere writable, and
 
 ### Things that are easy to get wrong
 
+- **A provider may answer about a different name than it was asked about.** An
+  alias is resolved to a dated build and the response reports the build, so
+  anything keyed on a model name has to be explicit about which of the two
+  names it holds: a rate is keyed by the requested name, a revision's column
+  records the reported one once there is output, and a log line names each
+  separately. A single `model` key is how a cost comes to be computed from a
+  name nothing was ever configured under.
 - **The test suite supplies its own environment** and is handed no `.env`, so a
   result never depends on how a particular machine is configured. Test values
   belong in `phpunit.xml`.

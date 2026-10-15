@@ -93,7 +93,11 @@ final readonly class GenerationEvents
     {
         $this->log->log('generation.stored', [
             'revision_id' => $revision->id,
-            'model' => $response->model,
+            // Both names, each under the name of its job: the cost was
+            // computed from the requested model, and the reported one is the
+            // build that served the request and the one the revision stores.
+            'requested_model' => $response->requestedModel,
+            'reported_model' => $response->reportedModel,
             'prompt_version' => $revision->prompt_version,
             'output_chars' => $outputChars,
             'cost_micros' => $response->costMicros,
@@ -108,7 +112,8 @@ final readonly class GenerationEvents
     {
         $this->log->warning('generation.unusable', [
             'revision_id' => $revision->id,
-            'model' => $response->model,
+            'requested_model' => $response->requestedModel,
+            'reported_model' => $response->reportedModel,
             'stop_reason' => $response->stopReason,
             'output_chars' => mb_strlen($response->text),
             'reason' => $reason,

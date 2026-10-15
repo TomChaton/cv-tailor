@@ -6,6 +6,7 @@ use App\Generation\GenerationIsRefused;
 use App\Llm\BatchRequest;
 use App\Llm\LlmClient;
 use App\Llm\LlmFailure;
+use App\Llm\ModelRegistry;
 use App\Models\LlmBatch;
 use App\Models\LlmBatchRevision;
 use App\Models\Revision;
@@ -19,12 +20,19 @@ use Illuminate\Database\ConnectionInterface;
  * There is no minimum batch size and no maximum wait. The batch API's discount
  * applies to a batch of one, so a quorum would buy nothing and cost every
  * revision a wait for company that may never arrive.
+ *
+ * **Claiming a revision records the model its request asked for**, which is
+ * the name the result will be priced from when it is collected. The provider
+ * answers about the build that served the request, and nothing is configured
+ * under that name, so the name asked for has to be written where collection
+ * can find it.
  */
 class SubmitBatch
 {
     public function __construct(
         private readonly LlmClient $client,
         private readonly BatchRequestBuilder $requests,
+        private readonly ModelRegistry $models,
         private readonly SubmitterHalt $halt,
         private readonly BatchEvents $events,
         private readonly ConnectionInterface $database,
@@ -75,7 +83,7 @@ class SubmitBatch
         // thing needed to find it again.
         $providerBatchId = $this->client->submitBatch(array_values($requests));
 
-        $batch = $this->record($providerBatchId, array_keys($requests));
+        $batch = $this->record($providerBatchId, $this->requestedModels($requests));
 
         $this->events->submitted($batch);
 
@@ -98,19 +106,42 @@ class SubmitBatch
     }
 
     /**
-     * @param  list<int>  $revisionIds
+     * The model each revision's request asks for, keyed by revision.
+     *
+     * The purpose chooses the model, so this is a configuration lookup rather
+     * than anything the request carries: an `LlmRequest` deliberately names no
+     * model, so that no caller can pin one by accident.
+     *
+     * @param  array<int, BatchRequest>  $requests
+     * @return array<int, string>
      */
-    private function record(string $providerBatchId, array $revisionIds): LlmBatch
+    private function requestedModels(array $requests): array
     {
-        return $this->database->transaction(function () use ($providerBatchId, $revisionIds): LlmBatch {
+        $models = [];
+
+        foreach ($requests as $revisionId => $request) {
+            $models[$revisionId] = $this->models->for($request->request->purpose);
+        }
+
+        return $models;
+    }
+
+    /**
+     * @param  array<int, string>  $requestedModels  The model each revision's
+     *                                               request asked for, keyed
+     *                                               by revision.
+     */
+    private function record(string $providerBatchId, array $requestedModels): LlmBatch
+    {
+        return $this->database->transaction(function () use ($providerBatchId, $requestedModels): LlmBatch {
             $batch = LlmBatch::create([
                 'provider_batch_id' => $providerBatchId,
                 'state' => LlmBatchState::Submitted,
                 'submitted_at' => CarbonImmutable::now(),
-                'request_count' => count($revisionIds),
+                'request_count' => count($requestedModels),
             ]);
 
-            foreach ($revisionIds as $revisionId) {
+            foreach ($requestedModels as $revisionId => $requestedModel) {
                 // The claim is the lock, and it is an ordinary conditional
                 // update rather than `SELECT ... FOR UPDATE`: SQLite ignores
                 // row locks and nothing here may depend on one database's
@@ -121,7 +152,14 @@ class SubmitBatch
                 $claimed = Revision::query()
                     ->whereKey($revisionId)
                     ->where('status', RevisionStatus::Pending)
-                    ->update(['status' => RevisionStatus::Submitted]);
+                    ->update([
+                        'status' => RevisionStatus::Submitted,
+                        // What this submission will be priced from. Written
+                        // again here because the revision has been waiting
+                        // since it was queued, and what would generate it now
+                        // is what has just been sent.
+                        'model' => $requestedModel,
+                    ]);
 
                 if ($claimed === 0) {
                     continue;

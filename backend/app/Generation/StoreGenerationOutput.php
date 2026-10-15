@@ -36,7 +36,11 @@ class StoreGenerationOutput
         $output = $this->decode($revision, $response);
 
         $revision->fill([
-            'model' => $response->model,
+            // The model the provider reports, not the one the request asked
+            // for: this column is the record of what actually ran. What was
+            // asked for was written when the request went out, and the cost
+            // below was computed from that.
+            'model' => $response->reportedModel,
             'output_json' => $output,
             'input_tokens' => $response->usage->inputTokens,
             'output_tokens' => $response->usage->outputTokens,

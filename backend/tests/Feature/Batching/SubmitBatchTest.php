@@ -72,6 +72,26 @@ class SubmitBatchTest extends TestCase
         $this->assertSame(SubmissionOutcome::Awaiting, $submission->outcome);
     }
 
+    /**
+     * The name a collected result will be priced from. The provider answers
+     * about the build it resolved the alias to, and nothing is configured
+     * under that name, so the name that was asked for is recorded where
+     * collection can find it.
+     */
+    public function test_claiming_a_revision_records_the_model_its_request_asked_for(): void
+    {
+        // What the revision recorded when it was queued, which may be a
+        // configuration ago: a revision waits in `pending` for as long as it
+        // takes, and what goes out now is what is configured now.
+        $revision = Revision::factory()->create(['model' => 'a-model-from-an-older-configuration']);
+
+        config(['cv.llm.models.generation' => 'the-configured-generation-model']);
+
+        $this->submit()->handle();
+
+        $this->assertSame('the-configured-generation-model', $revision->fresh()?->model);
+    }
+
     public function test_every_pending_revision_goes_out_in_one_batch_keyed_by_its_own_id(): void
     {
         $first = Revision::factory()->create();

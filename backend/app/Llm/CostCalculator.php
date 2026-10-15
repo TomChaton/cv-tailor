@@ -8,6 +8,12 @@ namespace App\Llm;
  * Micros — millionths of a currency unit — match the `cost_micros` column, and
  * money is never a float. Rates are divided out at the end and rounded up, so
  * a cost is never reported as less than it was.
+ *
+ * **Rates are keyed by the model the application asked for**, never by the one
+ * the provider answered about. A model is configured as an alias, the alias is
+ * what the published price belongs to, and the dated build behind it changes
+ * with nobody doing anything — so a rate keyed on the reported name would be a
+ * rate configured for a model the owner never chose.
  */
 final readonly class CostCalculator
 {
@@ -41,9 +47,36 @@ final readonly class CostCalculator
         return new self($parsed, $batchPercent);
     }
 
-    public function micros(string $model, TokenUsage $usage, bool $batched): int
+    /**
+     * A reply, priced against the model the request asked for.
+     *
+     * The only way a response is made: a reply carries the provider's own name
+     * for the model and pricing it by that name is the mistake this method
+     * exists to prevent.
+     */
+    public function price(string $requestedModel, LlmReply $reply, bool $batched): LlmResponse
     {
-        $rates = $this->rates[$model] ?? throw UnknownModel::forRates($model);
+        return LlmResponse::priced(
+            $reply,
+            $requestedModel,
+            $this->micros($requestedModel, $reply->usage, $batched),
+        );
+    }
+
+    /**
+     * Whether a model the application may ask for has a rate to price it by.
+     *
+     * Asked by `cv:status`, so the answer is readable beside the API key
+     * rather than arriving as a run that spent its attempts failing.
+     */
+    public function hasRates(string $requestedModel): bool
+    {
+        return isset($this->rates[$requestedModel]);
+    }
+
+    public function micros(string $requestedModel, TokenUsage $usage, bool $batched): int
+    {
+        $rates = $this->rates[$requestedModel] ?? throw UnknownModel::forRates($requestedModel);
 
         $weighted = $usage->inputTokens * $rates->input
             + $usage->outputTokens * $rates->output

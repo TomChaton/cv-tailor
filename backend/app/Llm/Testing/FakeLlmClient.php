@@ -12,6 +12,7 @@ use App\Llm\LlmClient;
 use App\Llm\LlmEvents;
 use App\Llm\LlmFailure;
 use App\Llm\LlmFailureKind;
+use App\Llm\LlmReply;
 use App\Llm\LlmRequest;
 use App\Llm\LlmResponse;
 use App\Llm\ModelRegistry;
@@ -29,6 +30,13 @@ use LogicException;
  *
  * Fixtures are recorded against the fictional master CV only. No fixture
  * derives from a real CV.
+ *
+ * It prices the way the real client does: a live call from the model its
+ * purpose is configured with, and a batch result not at all — a collected
+ * result is priced by the collection, from the model the revision was
+ * submitted with. A fixture's own model name is the one the provider reports,
+ * so a fixture may name a dated build that nothing is configured under, as a
+ * real response does.
  */
 final class FakeLlmClient implements LlmClient
 {
@@ -277,7 +285,7 @@ final class FakeLlmClient implements LlmClient
             yield match ($queued['outcome']) {
                 BatchOutcome::Succeeded => BatchResult::succeeded(
                     $queued['customId'],
-                    $this->recorded($queued['fixture'] ?? '', batched: true),
+                    $this->recorded($queued['fixture'] ?? ''),
                 ),
                 BatchOutcome::Errored => BatchResult::errored(
                     $queued['customId'],
@@ -314,14 +322,18 @@ final class FakeLlmClient implements LlmClient
             throw $failure;
         }
 
-        $response = $this->recorded($next['fixture'] ?? '', batched: false);
+        $response = $this->cost->price(
+            $this->models->for($request->purpose),
+            $this->recorded($next['fixture'] ?? ''),
+            batched: false,
+        );
 
         $this->events->request($request->purpose, $response);
 
         return $response;
     }
 
-    private function recorded(string $fixture, bool $batched): LlmResponse
+    private function recorded(string $fixture): LlmReply
     {
         $path = sprintf('%s/%s.json', rtrim($this->fixturePath, '/'), $fixture);
 
@@ -352,12 +364,11 @@ final class FakeLlmClient implements LlmClient
             cacheReadTokens: self::tokens($path, $usage, 'cache_read_tokens'),
         );
 
-        return new LlmResponse(
-            model: $model,
+        return new LlmReply(
+            reportedModel: $model,
             text: $text,
             stopReason: is_string($stopReason) ? $stopReason : null,
             usage: $tokens,
-            costMicros: $this->cost->micros($model, $tokens, $batched),
         );
     }
 

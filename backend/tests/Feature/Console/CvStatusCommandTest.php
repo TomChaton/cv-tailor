@@ -4,6 +4,7 @@ namespace Tests\Feature\Console;
 
 use App\Batching\LlmBatchState;
 use App\Batching\SubmitterHalt;
+use App\Llm\Testing\FakeLlmClient;
 use App\Models\LlmBatch;
 use App\Models\Posting;
 use App\Models\Revision;
@@ -146,6 +147,42 @@ class CvStatusCommandTest extends TestCase
 
         $this->assertStringContainsString('api key', $output);
         $this->assertStringNotContainsString('secret', $output);
+    }
+
+    /**
+     * A configured model with no configured rate stops the purpose it serves
+     * dead, after it has spent its attempts failing. Whether every purpose has
+     * a rate is knowable before anything runs, and the provider is not asked.
+     */
+    public function test_it_reports_each_purpose_its_model_and_whether_that_model_has_a_rate(): void
+    {
+        config([
+            'cv.llm.models' => [
+                'generation' => 'claude-opus-5',
+                'validation' => 'a-model-with-no-rate',
+                'extraction' => '',
+            ],
+        ]);
+
+        $this->assertSame(Command::SUCCESS, Artisan::call('cv:status'));
+
+        $output = Artisan::output();
+
+        $this->assertMatchesRegularExpression('/generation[\s.]+claude-opus-5 \(rate set\)/', $output);
+        $this->assertMatchesRegularExpression(
+            '/validation[\s.]+a-model-with-no-rate \(no rate: add it to cv.llm.rates\)/',
+            $output,
+        );
+        // A purpose nothing is configured for is still reported: one missing
+        // from the report cannot be told apart from one that was renamed.
+        $this->assertMatchesRegularExpression(
+            '/extraction[\s.]+not set: put LLM_EXTRACTION_MODEL in .env/',
+            $output,
+        );
+        // Nothing was asked of the provider: the fake would have refused a
+        // call it had nothing queued to answer, and the real SDK client
+        // refuses to be built here at all.
+        $this->assertSame([], $this->app->make(FakeLlmClient::class)->liveRequests());
     }
 
     /**

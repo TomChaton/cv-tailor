@@ -29,7 +29,11 @@ final readonly class ExtractionEvents
         $this->log->log('posting.extracted', [
             'posting_id' => $posting->id,
             'prompt_version' => PromptVersion::CURRENT,
-            'model' => $response->model,
+            // Both names, each under the name of its job: the cost was
+            // computed from the requested model, and the reported one is the
+            // build that served the call.
+            'requested_model' => $response->requestedModel,
+            'reported_model' => $response->reportedModel,
             'input_tokens' => $response->usage->inputTokens,
             'output_tokens' => $response->usage->outputTokens,
             'cost_micros' => $response->costMicros,

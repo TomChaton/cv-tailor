@@ -193,6 +193,23 @@ class ExtractPostingTest extends TestCase
         $this->assertCount(1, $this->llm->liveRequests());
     }
 
+    /**
+     * The provider resolves the configured alias to a dated build and reports
+     * that name back. A posting read by such a response is extracted and
+     * priced like any other: a cost computed from the reported name would find
+     * no rate configured under it, raise, and leave the posting with no title
+     * after three attempts at it.
+     */
+    public function test_a_response_reporting_a_dated_model_still_extracts_the_posting(): void
+    {
+        $this->llm->willAnswerWith('extraction-dated-model');
+
+        $posting = $this->extract($this->captured());
+
+        $this->assertSame('Senior PHP Engineer', $posting->title);
+        $this->assertNotNull($posting->extracted_at);
+    }
+
     public function test_an_answer_that_is_not_a_report_about_a_page_raises(): void
     {
         $this->llm->willAnswerWith('extraction-not-an-object');
@@ -220,7 +237,8 @@ class ExtractPostingTest extends TestCase
             ->with('posting.extracted', Mockery::on(function (array $context): bool {
                 $this->assertSame(Posting::sole()->id, $context['posting_id']);
                 $this->assertSame(PromptVersion::CURRENT, $context['prompt_version']);
-                $this->assertSame('claude-haiku-4-5', $context['model']);
+                $this->assertSame('claude-haiku-4-5', $context['requested_model']);
+                $this->assertSame('claude-haiku-4-5', $context['reported_model']);
                 $this->assertSame(1840, $context['input_tokens']);
                 $this->assertSame(310, $context['output_tokens']);
                 $this->assertGreaterThan(0, $context['cost_micros']);
