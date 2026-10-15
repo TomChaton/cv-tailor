@@ -37,6 +37,12 @@ final readonly class JobBrief
         ]);
     }
 
+    /**
+     * **`cover_letter_requested` is deliberately not read here.** The column
+     * records that the owner asked for a cover letter, and nothing generates
+     * one: this prompt asks for a CV, and a letter is a request of its own with
+     * a prompt and an output schema of its own. This is where that work starts.
+     */
     private function posting(Posting $posting): string
     {
         $metadata = array_filter([

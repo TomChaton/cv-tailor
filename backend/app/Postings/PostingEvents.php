@@ -22,11 +22,17 @@ final readonly class PostingEvents
     /**
      * The size is the point. A capture whose page read back as a fragment is
      * invisible in the posting and obvious here.
+     *
+     * `asked_for` is which of the popup's actions the owner clicked. A capture
+     * that asked for a CV also emits `posting.wanted`; this is the only line
+     * that says a cover letter was asked for, because nothing writes one yet
+     * and an event for nothing happening is noise.
      */
     public function captured(Posting $posting, PostingCapture $capture): void
     {
         $this->log->log('posting.captured', [
             'posting_id' => $posting->id,
+            'asked_for' => $capture->askedFor->value,
             'source_site' => $capture->sourceSite,
             'dedupe_hash' => $posting->dedupe_hash,
             'has_hidden_text' => $capture->hasHiddenText,
@@ -40,11 +46,16 @@ final readonly class PostingEvents
     /**
      * Not a failure: capture is idempotent, and a retry or a second reading of
      * the same page is the ordinary case.
+     *
+     * It carries what was asked for too, because a second capture is how a
+     * posting the owner already had comes to be wanted or to carry a request
+     * for a cover letter, and this is the only line that reports one.
      */
     public function duplicate(Posting $posting, PostingCapture $capture): void
     {
         $this->log->log('posting.duplicate', [
             'posting_id' => $posting->id,
+            'asked_for' => $capture->askedFor->value,
             'source_site' => $capture->sourceSite,
         ]);
     }

@@ -110,6 +110,16 @@
             }
         },
         "schemas": {
+            "AskedFor": {
+                "type": "string",
+                "description": "What the owner asked for when they captured a posting. The decision that a posting is worth a CV is made on the job board, in the same glance as the decision to keep the posting at all, so a capture carries it. One field with one value per choice, rather than a flag each: two flags would let a capture say it wanted nothing generated and a cover letter with it, which means nothing.  `Save` is what a capture that says nothing asked for, so a caller that knows nothing about this field behaves as the owner keeping a posting for later.\n| |\n|---|\n| `save` <br/> Keep the posting. It waits at `captured` until the owner says more. |\n| `cv` <br/> Generate a CV for it, which is the review UI's Want decision. |\n| `cv_and_cover_letter` <br/> The same, and record that a cover letter was asked for as well. |",
+                "enum": [
+                    "save",
+                    "cv",
+                    "cv_and_cover_letter"
+                ],
+                "title": "AskedFor"
+            },
             "CapturePostingRequest": {
                 "type": "object",
                 "properties": {
@@ -139,6 +149,10 @@
                     "has_hidden_text": {
                         "type": "boolean",
                         "description": "Whether the page held text a reader cannot see."
+                    },
+                    "asked_for": {
+                        "description": "What the owner asked for. Absent asks to keep the posting.\n\n| |\n|---|\n| `save` <br/> Keep the posting. It waits at `captured` until the owner says more. |\n| `cv` <br/> Generate a CV for it, which is the review UI's Want decision. |\n| `cv_and_cover_letter` <br/> The same, and record that a cover letter was asked for as well. |",
+                        "$ref": "#/components/schemas/AskedFor"
                     }
                 },
                 "required": [

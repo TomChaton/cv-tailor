@@ -34,6 +34,17 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AskedFor
+         * @description What the owner asked for when they captured a posting. The decision that a posting is worth a CV is made on the job board, in the same glance as the decision to keep the posting at all, so a capture carries it. One field with one value per choice, rather than a flag each: two flags would let a capture say it wanted nothing generated and a cover letter with it, which means nothing.  `Save` is what a capture that says nothing asked for, so a caller that knows nothing about this field behaves as the owner keeping a posting for later.
+         *     | |
+         *     |---|
+         *     | `save` <br/> Keep the posting. It waits at `captured` until the owner says more. |
+         *     | `cv` <br/> Generate a CV for it, which is the review UI's Want decision. |
+         *     | `cv_and_cover_letter` <br/> The same, and record that a cover letter was asked for as well. |
+         * @enum {string}
+         */
+        AskedFor: "save" | "cv" | "cv_and_cover_letter";
         /** CapturePostingRequest */
         CapturePostingRequest: {
             /**
@@ -51,6 +62,16 @@ export interface components {
             } | null;
             /** @description Whether the page held text a reader cannot see. */
             has_hidden_text: boolean;
+            /**
+             * @description What the owner asked for. Absent asks to keep the posting.
+             *
+             *     | |
+             *     |---|
+             *     | `save` <br/> Keep the posting. It waits at `captured` until the owner says more. |
+             *     | `cv` <br/> Generate a CV for it, which is the review UI's Want decision. |
+             *     | `cv_and_cover_letter` <br/> The same, and record that a cover letter was asked for as well. |
+             */
+            asked_for?: components["schemas"]["AskedFor"];
         };
         /**
          * PostingStatus

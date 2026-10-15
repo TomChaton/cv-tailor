@@ -66,7 +66,7 @@ describe('captureTab', () => {
     await configure();
     stubFetch(answer(201, { id: 12, status: 'captured' }));
 
-    expect(await captureTab(TAB, NOW)).toBe('saved');
+    expect(await captureTab(TAB, 'save', NOW)).toBe('saved');
     expect(await readQueue()).toHaveLength(0);
     expect(fake.badge.text).toBe(messageFor('badgeLanded'));
   });
@@ -75,7 +75,7 @@ describe('captureTab', () => {
     await configure();
     stubFetch(answer(200, { id: 12, status: 'reviewed' }));
 
-    const outcome = await captureTab(TAB, NOW);
+    const outcome = await captureTab(TAB, 'save', NOW);
 
     expect(outcome).toBe('already-saved');
     expect(messageKeyOf(outcome)).toBe('captureAlreadySaved');
@@ -87,7 +87,7 @@ describe('captureTab', () => {
     await configure();
     stubFetch(answer(201, { id: 12, status: 'captured' }));
 
-    await captureTab(TAB, NOW);
+    await captureTab(TAB, 'save', NOW);
 
     expect(fake.injections).toEqual([
       { files: ['read-page.js'], hasFunc: false },
@@ -100,15 +100,34 @@ describe('captureTab', () => {
 
     const fetch = stubFetch(answer(201, { id: 12, status: 'captured' }));
 
-    await captureTab(TAB, NOW);
+    await captureTab(TAB, 'save', NOW);
 
     const request = fetch.mock.calls[0]![0] as Request;
 
-    expect(await request.json()).toEqual(pageRead.posting);
+    expect(await request.json()).toEqual({ ...pageRead.posting, asked_for: 'save' });
   });
 
+  /**
+   * The ask is the one thing in a capture the page did not say. Which of the
+   * three was clicked is the owner's decision, and the backend acts on it.
+   */
+  it.each(['save', 'cv', 'cv_and_cover_letter'] as const)(
+    'sends what the owner asked for: %s',
+    async (askedFor) => {
+      await configure();
+
+      const fetch = stubFetch(answer(201, { id: 12, status: 'captured' }));
+
+      expect(await captureTab(TAB, askedFor, NOW)).toBe('saved');
+
+      const request = fetch.mock.calls[0]![0] as Request;
+
+      expect(await request.json()).toMatchObject({ asked_for: askedFor });
+    },
+  );
+
   it('stops before reading the page when nothing is configured', async () => {
-    expect(await captureTab(TAB, NOW)).toBe('not-configured');
+    expect(await captureTab(TAB, 'save', NOW)).toBe('not-configured');
     expect(fake.injections).toHaveLength(0);
   });
 
@@ -120,7 +139,7 @@ describe('captureTab', () => {
     await configure();
     fake.injectionRefused = true;
 
-    expect(await captureTab(TAB, NOW)).toBe('page-unreadable');
+    expect(await captureTab(TAB, 'save', NOW)).toBe('page-unreadable');
     expect(await readQueue()).toHaveLength(0);
   });
 
@@ -144,7 +163,7 @@ describe('captureTab', () => {
 
     stubFetch(answer(201, { id: 12, status: 'captured' }));
 
-    expect(await captureTab(TAB, NOW)).toBe('saved');
+    expect(await captureTab(TAB, 'save', NOW)).toBe('saved');
   });
 
   /**
@@ -167,7 +186,7 @@ describe('captureTab', () => {
 
     const fetch = stubFetch(answer(201, { id: 12, status: 'captured' }));
 
-    expect(await captureTab(TAB, NOW)).toBe('page-blank');
+    expect(await captureTab(TAB, 'save', NOW)).toBe('page-blank');
     expect(fetch).not.toHaveBeenCalled();
     expect(await readQueue()).toHaveLength(0);
     expect(fake.badge.text).toBe(messageFor('badgeRefused'));
@@ -177,7 +196,7 @@ describe('captureTab', () => {
     await configure();
     stubFetch(new TypeError('Failed to fetch'));
 
-    expect(await captureTab(TAB, NOW)).toBe('unreachable');
+    expect(await captureTab(TAB, 'save', NOW)).toBe('unreachable');
 
     const queue = await readQueue();
 
@@ -186,11 +205,27 @@ describe('captureTab', () => {
     expect(fake.badge.text).toBe('1');
   });
 
+  /**
+   * A capture kept for retry has to ask for the same thing when it is finally
+   * sent, or the owner's decision is quietly downgraded to a posting nobody
+   * generates from.
+   */
+  it('keeps what the owner asked for with the capture it kept', async () => {
+    await configure();
+    stubFetch(new TypeError('Failed to fetch'));
+
+    await captureTab(TAB, 'cv_and_cover_letter', NOW);
+
+    const queue = await readQueue();
+
+    expect(queue[0]!.capture.asked_for).toBe('cv_and_cover_letter');
+  });
+
   it('keeps a capture a rejected token stopped, because the token can be replaced', async () => {
     await configure();
     stubFetch(answer(401, { message: 'Unauthenticated.' }));
 
-    expect(await captureTab(TAB, NOW)).toBe('token-rejected');
+    expect(await captureTab(TAB, 'save', NOW)).toBe('token-rejected');
     expect(await readQueue()).toHaveLength(1);
   });
 
@@ -200,7 +235,7 @@ describe('captureTab', () => {
       answer(422, { message: 'The url field must be a valid URL.', errors: { url: ['bad'] } }),
     );
 
-    expect(await captureTab(TAB, NOW)).toBe('rejected');
+    expect(await captureTab(TAB, 'save', NOW)).toBe('rejected');
     expect(await readQueue()).toHaveLength(0);
   });
 
@@ -208,23 +243,42 @@ describe('captureTab', () => {
     await configure();
     stubFetch(new TypeError('Failed to fetch'));
 
-    await captureTab(TAB, NOW);
+    await captureTab(TAB, 'save', NOW);
 
     stubFetch(answer(201, { id: 12, status: 'captured' }));
 
     // Far enough past the first failure for the backoff to be up.
-    expect(await captureTab(TAB, NOW + 120_000)).toBe('saved');
+    expect(await captureTab(TAB, 'save', NOW + 120_000)).toBe('saved');
     expect(await readQueue()).toHaveLength(0);
     expect(fake.badge.text).toBe(messageFor('badgeLanded'));
   });
 });
 
 describe('drainQueue', () => {
+  /**
+   * The retry asks for what the owner asked for, however long it waited.
+   */
+  it('sends a kept capture asking for the same thing it asked for first', async () => {
+    await configure();
+    stubFetch(new TypeError('Failed to fetch'));
+
+    await captureTab(TAB, 'cv', NOW);
+
+    const fetch = stubFetch(answer(201, { id: 12, status: 'wanted' }));
+
+    await drainQueue(NOW + 61_000);
+
+    const request = fetch.mock.calls[0]![0] as Request;
+
+    expect(await request.json()).toMatchObject({ asked_for: 'cv' });
+    expect(await readQueue()).toHaveLength(0);
+  });
+
   it('retries a kept capture once its backoff is up, and clears the badge', async () => {
     await configure();
     stubFetch(new TypeError('Failed to fetch'));
 
-    await captureTab(TAB, NOW);
+    await captureTab(TAB, 'save', NOW);
 
     stubFetch(answer(201, { id: 12, status: 'captured' }));
 
@@ -238,7 +292,7 @@ describe('drainQueue', () => {
     await configure();
     stubFetch(new TypeError('Failed to fetch'));
 
-    await captureTab(TAB, NOW);
+    await captureTab(TAB, 'save', NOW);
 
     const fetch = stubFetch(answer(201, { id: 12, status: 'captured' }));
 
@@ -252,7 +306,7 @@ describe('drainQueue', () => {
     await configure();
     stubFetch(new TypeError('Failed to fetch'));
 
-    await captureTab(TAB, NOW);
+    await captureTab(TAB, 'save', NOW);
     await drainQueue(NOW + 61_000);
 
     const queue = await readQueue();
@@ -266,7 +320,7 @@ describe('drainQueue', () => {
     await configure();
     stubFetch(new TypeError('Failed to fetch'));
 
-    await captureTab(TAB, NOW);
+    await captureTab(TAB, 'save', NOW);
 
     // A restart is a fresh set of modules over the same storage: nothing the
     // capture needs was held in memory.

@@ -35,8 +35,9 @@ build.
 
 ## Capture
 
-- The user triggers capture from the extension's action (toolbar button or
-  keyboard shortcut) on a job's detail view. The shortcut is bound to
+- The user opens the extension's action (toolbar button or keyboard shortcut)
+  on a job's detail view, and the capture starts on one of the popup's three
+  actions rather than on the popup opening. The shortcut is bound to
   `_execute_action` rather than to a command of its own, so the two triggers
   are one path and cannot drift apart.
 - **The extension sends the page and judges nothing about it.** Finding the job
@@ -128,15 +129,24 @@ reading those from storage is the options page's job.
 
 ## Feedback
 
-- **The popup is how a capture is made.** Opening it starts the capture of the
-  active tab; the work itself happens in the service worker, because the popup
-  closes the moment the owner clicks away and a capture must not close with it.
+- **The popup is how a capture is made, and it asks what for.** It offers the
+  three things the backend can be asked for — keep the posting, generate a CV,
+  generate a CV and a cover letter — and nothing is captured until one of them
+  is clicked: the owner is on the job board, where whether a posting is worth a
+  CV is decided in the same glance as whether to keep it at all. The work
+  itself happens in the service worker, because the popup closes the moment the
+  owner clicks away and a capture must not close with it.
+- **The buttons are a `Record` keyed by the contract's own type**, so they are
+  the backend's list of choices rather than a second one kept in step by hand:
+  a choice the backend adds or renames stops the popup compiling.
 - **The popup shows one line**: what happened — saved, already saved, not
   configured, a page it may not read, a page that read as blank, or what the
-  backend said. There is no "nothing found on the page": whether a page holds a
-  job description is the backend's judgement, and a blank read answers a
-  different question — whether there was anything to send at all. A second line
-  appears only while the capture is still waiting to be sent, and a way into the
+  backend said. The actions give way to it, and none of them makes it two
+  sentences: three buttons are three decisions, not three things to be told.
+  There is no "nothing found on the page": whether a page holds a job
+  description is the backend's judgement, and a blank read answers a different
+  question — whether there was anything to send at all. A second line appears
+  only while the capture is still waiting to be sent, and a way into the
   settings only when there are none.
 - **The badge shows what is outstanding.** A count while captures wait to be
   sent, because that is the one thing the owner cannot find out any other way;
@@ -161,6 +171,10 @@ reading those from storage is the options page's job.
 - **The queue lives in `chrome.storage.local`** and is the only state capture
   keeps. The service worker can be stopped by Chrome at any time, so no state
   lives in memory between events.
+- **The queue carries what the owner asked for**, stored with the capture
+  rather than beside it. A capture kept for retry has to ask for the same thing
+  on the attempt that finally lands, or a decision the owner took on the job
+  board is quietly downgraded to a posting nothing generates from.
 - **Retrying is safe because capture is idempotent**: a posting the backend
   already holds answers with that posting rather than a second copy. That is
   what lets the queue send something a second time without having to know

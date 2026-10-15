@@ -19,6 +19,12 @@ export interface FakeChrome {
   requestedOrigins: string[][];
   removedOrigins: string[][];
   optionsPageOpened: number;
+  /** The active tab `chrome.tabs.query` answers with, or none. */
+  activeTabId: number | undefined;
+  /** What the popup has sent the service worker. */
+  sentMessages: unknown[];
+  /** What the service worker answers a popup's message with. */
+  messageAnswer: unknown;
 }
 
 export function installFakeChrome(): FakeChrome {
@@ -34,6 +40,9 @@ export function installFakeChrome(): FakeChrome {
     requestedOrigins: [],
     removedOrigins: [],
     optionsPageOpened: 0,
+    activeTabId: undefined,
+    sentMessages: [],
+    messageAnswer: 'saved',
   };
 
   const api = {
@@ -100,11 +109,20 @@ export function installFakeChrome(): FakeChrome {
     i18n: {
       getMessage: (key: string) => catalogue[key]?.message ?? '',
     },
+    tabs: {
+      query: () =>
+        Promise.resolve(fake.activeTabId === undefined ? [] : [{ id: fake.activeTabId }]),
+    },
     runtime: {
       openOptionsPage: () => {
         fake.optionsPageOpened += 1;
 
         return Promise.resolve();
+      },
+      sendMessage: (message: unknown) => {
+        fake.sentMessages.push(message);
+
+        return Promise.resolve(fake.messageAnswer);
       },
     },
   };

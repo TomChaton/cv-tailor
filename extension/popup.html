@@ -18,14 +18,28 @@
         color: #57606a;
       }
 
+      #actions {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
       button {
         font: inherit;
+      }
+
+      #settings {
         margin-top: 0.75rem;
       }
     </style>
   </head>
   <body>
-    <p id="outcome"></p>
+    <div id="actions">
+      <button id="save" type="button"></button>
+      <button id="cv" type="button"></button>
+      <button id="cover-letter" type="button"></button>
+    </div>
+    <p id="outcome" hidden></p>
     <p id="kept" hidden></p>
     <button id="settings" type="button" hidden></button>
     <script type="module" src="popup.js"></script>

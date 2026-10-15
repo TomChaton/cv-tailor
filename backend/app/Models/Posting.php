@@ -19,6 +19,9 @@ use Illuminate\Support\Carbon;
  * company, where the work is, what it pays, and the job description itself —
  * is extraction's answer, and `extracted_at` says whether it has been asked.
  *
+ * `cover_letter_requested` is the owner's own: they asked for a cover letter
+ * for this job. The postings list reads it and nothing in generation does.
+ *
  * @property-read int $id
  * @property-read string $url
  * @property-read string $source_site
@@ -32,6 +35,7 @@ use Illuminate\Support\Carbon;
  * @property-read Carbon|null $extracted_at
  * @property-read string $dedupe_hash
  * @property-read bool $has_hidden_text
+ * @property-read bool $cover_letter_requested
  * @property-read PostingStatus $status
  * @property-read ?int $current_revision_id
  */
@@ -47,6 +51,7 @@ use Illuminate\Support\Carbon;
     'description',
     'extracted_at',
     'has_hidden_text',
+    'cover_letter_requested',
     'dedupe_hash',
     'status',
     'current_revision_id',
@@ -93,6 +98,7 @@ class Posting extends Model
     {
         return [
             'has_hidden_text' => 'boolean',
+            'cover_letter_requested' => 'boolean',
             'json_ld' => 'array',
             'extracted_at' => 'datetime',
             'status' => PostingStatus::class,

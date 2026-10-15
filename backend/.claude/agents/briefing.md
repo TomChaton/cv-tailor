@@ -386,7 +386,8 @@ deliberately, and not to be made to agree.
 - **`postings`** — a captured posting. The capture's own material: URL, source
   site, `page_text`, `json_ld`, hidden-text flag, dedupe hash. Extraction's
   answer: title, company, location, salary text, description, `extracted_at`.
-  And the tracker: `status`, `current_revision_id`, `applied_revision_id`.
+  The owner's own: `cover_letter_requested`. And the tracker: `status`,
+  `current_revision_id`, `applied_revision_id`.
 - **`revisions`** — one tailored CV for a posting.
   - `posting_id`, `parent_revision_id` (nullable — revisions form a tree, not a
     list), `master_cv_version_id`.
@@ -590,6 +591,27 @@ API contract. What belongs here is where the pieces live.
 - **A capture dispatches one queued extraction job, and a duplicate dispatches
   none.** The answer a duplicate wants is already stored, so paying a model for
   it again is what the dedupe hash exists to avoid.
+- **What the owner asked for is applied through the same actions the review UI
+  uses.** A capture asking for a CV is the Want decision taken from the job
+  board, so it goes through `MarkPostingWanted`: one place a posting becomes
+  wanted, one event that says so, and no second copy of the gate's rules
+  inside capture.
+- **A second capture never moves a posting backwards.** Marking is conditional
+  on `captured`, so a posting that has been queued, generated, reviewed or
+  applied answers `200` with the status it already had, and a discarded posting
+  stays discarded — the owner discarded it, and a capture is not an appeal. A
+  posting still at `captured` does move, because the owner has just made the
+  decision they were offered.
+- **A posting records that a cover letter was asked for.** A decision taken on
+  the job board and not written down is a decision lost, so the request is
+  stored where it is made; writing the letter is a request of its own, with a
+  prompt and an output schema of its own, and this column is what it will be
+  driven from. The postings list reads it. `JobBrief` is where generation
+  deliberately does not, and the comment there is where that work starts.
+- **The request is a fact about the posting rather than about a revision**, and
+  it is only ever recorded. The owner asked for a letter for this job, which
+  stays true however many times the CV is generated again — and a later capture
+  of the same page asking for less has not unasked for it.
 - **Extraction is a live call, not a batch.** Everything else in the pipeline
   is asynchronous because nobody is waiting on it; the postings list is
   unusable until extraction has run, and the owner is looking at it. A batch's

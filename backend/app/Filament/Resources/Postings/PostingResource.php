@@ -102,6 +102,14 @@ class PostingResource extends Resource
                     ->label(__('postings.columns.status'))
                     ->badge()
                     ->formatStateUsing(fn (PostingStatus $state): string => self::statusLabel($state)),
+                // A mark where the owner asked for a cover letter and nothing
+                // where they did not, for the same reason the hidden-text
+                // column draws only its warning.
+                IconColumn::make('cover_letter_requested')
+                    ->label(__('postings.columns.cover_letter'))
+                    ->boolean(false)
+                    ->icon(fn (bool $state): ?Heroicon => $state ? Heroicon::Envelope : null)
+                    ->color('primary'),
                 // A warning and nothing where there is nothing to warn about.
                 // Hidden text in a listing is sometimes aimed at AI tools, so
                 // the owner should know before trusting what was extracted.
