@@ -30,7 +30,6 @@ return [
     'problems' => 'Problems',
     'passes' => 'Fit to generate from.',
     'notes' => 'Notes',
-    'finding' => 'line :line — :message',
     'where_used' => 'Where used',
 
     'checks' => [
@@ -45,6 +44,7 @@ return [
         'save' => 'Save',
         'download' => 'Download',
         'add_ids' => 'Add missing IDs',
+        'select_line' => 'Line :line',
         'where_used' => 'Choose where used',
     ],
 

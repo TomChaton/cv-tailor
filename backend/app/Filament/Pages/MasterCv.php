@@ -2,10 +2,11 @@
 
 namespace App\Filament\Pages;
 
-use App\MasterCv\Fixes\RewriteWhereUsed;
+use App\MasterCv\Fixes\ApplyWhereUsedFix;
 use App\MasterCv\Fixes\WhereUsedChoices;
 use App\MasterCv\InspectMasterCv;
 use App\MasterCv\Lint\Finding;
+use App\MasterCv\Lint\FindingLevel;
 use App\MasterCv\Lint\Remedy;
 use App\MasterCv\MasterCvParser;
 use App\MasterCv\MasterCvReport;
@@ -18,9 +19,9 @@ use Filament\Forms\Components\Textarea;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Filament\Schemas\Components\Actions;
 use Filament\Schemas\Components\Component;
 use Filament\Schemas\Components\Fieldset;
-use Filament\Schemas\Components\Flex;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Group;
 use Filament\Schemas\Components\Section;
@@ -28,6 +29,7 @@ use Filament\Schemas\Components\Text;
 use Filament\Schemas\Components\UnorderedList;
 use Filament\Schemas\Schema;
 use Filament\Support\Enums\FontFamily;
+use Filament\Support\Enums\Size;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Contracts\Support\Htmlable;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -84,7 +86,7 @@ class MasterCv extends Page
 
     private MasterCvParser $parser;
 
-    private RewriteWhereUsed $rewriteWhereUsed;
+    private ApplyWhereUsedFix $applyWhereUsedFix;
 
     /**
      * Livewire constructs its own components, so there is no constructor to
@@ -95,12 +97,12 @@ class MasterCv extends Page
         InspectMasterCv $inspect,
         SaveMasterCv $save,
         MasterCvParser $parser,
-        RewriteWhereUsed $rewriteWhereUsed,
+        ApplyWhereUsedFix $applyWhereUsedFix,
     ): void {
         $this->inspect = $inspect;
         $this->saveMasterCv = $save;
         $this->parser = $parser;
-        $this->rewriteWhereUsed = $rewriteWhereUsed;
+        $this->applyWhereUsedFix = $applyWhereUsedFix;
     }
 
     public function mount(): void
@@ -316,7 +318,7 @@ class MasterCv extends Page
                 ->columns(1)
                 ->schema([
                     UnorderedList::make(array_map(
-                        fn (Finding $finding, int $position): Action|Component|string => $this->finding($finding, $position),
+                        fn (Finding $finding, int $position): Component => $this->finding($finding, $position),
                         $findings,
                         array_keys($findings),
                     ))
@@ -330,37 +332,57 @@ class MasterCv extends Page
     }
 
     /**
-     * One finding, beside the editor it is about, and beside the fix where
-     * there is one this page can make.
+     * One finding, beside the editor it is about, with whatever this page can
+     * do about it under it.
      *
-     * A finding that names a line is a button that selects it. The number was
-     * only ever being read to find the line, and finding it by eye in a
-     * document of several hundred lines is the work this takes off the page.
+     * The finding's own sentence is what says what is wrong, so it stays
+     * prose and is read as prose. Anything that can be pressed is a button
+     * under it: a control drawn as prose is a control nobody presses, and two
+     * of them side by side read as one sentence rather than as two things
+     * that can be pressed.
      *
-     * A finding with no line to name has nothing to select, so it stays the
-     * sentence it was: a control that did nothing when it was pressed would
-     * be worse than no control at all.
+     * The line a finding names is the label of the button that selects it.
+     * The number was only ever being read to find the line, and finding it by
+     * eye in a document of several hundred lines is the work this takes off
+     * the page.
      *
-     * Notes behave exactly as problems do. One fails the CV and the other
-     * does not, and neither fact has anything to do with finding the line.
+     * A finding with no line has nothing to select, so it is the sentence and
+     * nothing else: a control that did nothing when it was pressed would be
+     * worse than no control at all.
+     *
+     * Notes carry the same controls as problems. One fails the CV and the
+     * other does not, and neither fact has anything to do with finding the
+     * line or with correcting the row.
      */
-    private function finding(Finding $finding, int $position): Action|Component|string
+    private function finding(Finding $finding, int $position): Component
     {
-        $control = $this->findingControl($finding, $position);
-        $fix = $this->whereUsedFix($finding);
+        // The messages are the linter's own words, written for the CV's
+        // author rather than for a developer, so they are the one thing on
+        // this page that does not come from the catalogue.
+        $sentence = Text::make($finding->message);
 
-        return $fix === null ? $control : Flex::make([$control, $fix]);
+        $controls = array_values(array_filter([
+            $this->lineControl($finding, $position),
+            $this->whereUsedFix($finding),
+        ]));
+
+        return $controls === []
+            ? $sentence
+            // The sentence gets the width it needs and the buttons sit under
+            // it, so neither is read as part of the other.
+            : Group::make([$sentence, Actions::make($controls)])->dense();
     }
 
-    private function findingControl(Finding $finding, int $position): Action|string
+    private function lineControl(Finding $finding, int $position): ?Action
     {
         if ($finding->line === null) {
-            return $this->findingText($finding);
+            return null;
         }
 
         return Action::make(implode('_', [$finding->level->value, $finding->check, $position]))
-            ->label($this->findingText($finding))
-            ->link()
+            ->label(__('master-cv.actions.select_line', ['line' => $finding->line]))
+            ->size(Size::ExtraSmall)
+            ->color('gray')
             // Client-side only. The selection is the browser's own, so the
             // server has nothing to say about it, and a round trip would be
             // a round trip per problem read.
@@ -371,8 +393,10 @@ class MasterCv extends Page
      * Choosing, from the roles and projects the document holds, which of them
      * a skills-index row names.
      *
-     * Only this class of problem carries it. A problem with no fix this page
-     * can make shows no control suggesting otherwise.
+     * A note carries it as readily as a problem: the question is the same one
+     * whichever level the finding came at, and a note is that question with a
+     * sibling that happened to match. A finding naming no remedy this page
+     * can offer shows no control suggesting otherwise.
      *
      * Everything the modal offers is built when it opens, from the CV in the
      * editor, so the choices are the document's own and an answer that is not
@@ -394,7 +418,7 @@ class MasterCv extends Page
 
         return Action::make('whereUsed_'.$id)
             ->label(__('master-cv.actions.where_used'))
-            ->link()
+            ->size(Size::ExtraSmall)
             // A row the editor no longer holds has nothing to choose for.
             // The findings are the last lint's; the editor is now.
             ->visible(fn (): bool => $this->editing()->writtenSkill($id) !== null)
@@ -409,24 +433,30 @@ class MasterCv extends Page
                 'where_used' => WhereUsedChoices::of($this->editing())
                     ->selected($this->editing()->writtenSkill($id)?->whereUsed),
             ])
-            ->action(function (array $data) use ($id): void {
+            ->action(function (array $data) use ($id, $finding): void {
                 /** @var array<array-key, mixed> $chosen */
                 $chosen = is_array($data['where_used'] ?? null) ? $data['where_used'] : [];
 
-                $this->chooseWhereUsed($id, array_values(array_filter($chosen, is_string(...))));
+                $this->chooseWhereUsed(
+                    $id,
+                    array_values(array_filter($chosen, is_string(...))),
+                    $finding->level,
+                );
             });
     }
 
     /**
-     * Writes one row's "Where used" cell, then saves and re-lints.
+     * Answers one row's "Where used" cell, then saves and re-lints.
      *
      * Choosing nothing is an answer: a skill the author has not placed yet
      * claims no roles, and a row claiming nothing is better than a row
-     * claiming something that is not in the file.
+     * claiming something that is not in the file. Choosing what the row
+     * already names is not an answer at all, and the fix says so by writing
+     * nothing — see `ApplyWhereUsedFix`.
      *
      * @param  list<string>  $chosen
      */
-    private function chooseWhereUsed(string $id, array $chosen): void
+    private function chooseWhereUsed(string $id, array $chosen, FindingLevel $level): void
     {
         $editing = $this->editing();
         $skill = $editing->writtenSkill($id);
@@ -435,10 +465,12 @@ class MasterCv extends Page
             return;
         }
 
-        $this->data['markdown'] = $this->rewriteWhereUsed->handle(
+        $this->data['markdown'] = $this->applyWhereUsedFix->handle(
             $this->markdown(),
+            $editing,
             $skill,
-            WhereUsedChoices::of($editing)->cell($chosen),
+            $chosen,
+            $level,
         );
 
         $this->save();
@@ -475,21 +507,6 @@ class MasterCv extends Page
         $markdown = $this->data['markdown'] ?? '';
 
         return is_string($markdown) ? $markdown : '';
-    }
-
-    /**
-     * The messages are the linter's own words, written for the CV's author
-     * rather than for a developer, so they are the one thing on this page
-     * that does not come from the catalogue.
-     */
-    private function findingText(Finding $finding): string
-    {
-        return $finding->line === null
-            ? $finding->message
-            : (string) __('master-cv.finding', [
-                'line' => $finding->line,
-                'message' => $finding->message,
-            ]);
     }
 
     /**

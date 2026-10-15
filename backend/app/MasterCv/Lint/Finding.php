@@ -11,8 +11,10 @@ namespace App\MasterCv\Lint;
  *
  * It states the problem and never the remedy. A finding is read in a terminal
  * and in the review UI, and what to do about it differs between them, so a
- * problem with a known fix names it in `remedy` and leaves the wording to
- * whichever surface is doing the telling.
+ * finding with a known fix names it in `remedy` and leaves the wording to
+ * whichever surface is doing the telling. A note names one as readily as a
+ * problem does: whether a finding fails the CV has nothing to do with whether
+ * there is a known way to put it right.
  */
 final readonly class Finding
 {
@@ -29,8 +31,8 @@ final readonly class Finding
         return new self($check, FindingLevel::Problem, $line, $message, $remedy);
     }
 
-    public static function note(string $check, ?int $line, string $message): self
+    public static function note(string $check, ?int $line, string $message, ?Remedy $remedy = null): self
     {
-        return new self($check, FindingLevel::Note, $line, $message);
+        return new self($check, FindingLevel::Note, $line, $message, $remedy);
     }
 }

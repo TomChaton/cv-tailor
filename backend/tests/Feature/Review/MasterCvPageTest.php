@@ -5,7 +5,6 @@ namespace Tests\Feature\Review;
 use App\Filament\Pages\MasterCv as MasterCvPage;
 use App\MasterCv\Ids\AssignMasterCvIds;
 use App\MasterCv\InspectMasterCv;
-use App\MasterCv\Lint\Finding;
 use App\Models\MasterCv;
 use App\Models\User;
 use Filament\Actions\Testing\TestAction;
@@ -97,10 +96,10 @@ class MasterCvPageTest extends TestCase
     public static function brokenFixtures(): array
     {
         return [
-            'a duplicate ID' => ['broken-duplicate-id.md', 'ids', 'line 42'],
-            'a missing ID' => ['broken-missing-id.md', 'ids', 'line 42'],
+            'a duplicate ID' => ['broken-duplicate-id.md', 'ids', 'Line 42'],
+            'a missing ID' => ['broken-missing-id.md', 'ids', 'Line 42'],
             'a missing section' => ['broken-missing-section.md', 'sections', ''],
-            'a skills row naming no role' => ['broken-skill-names-no-role.md', 'skills_index_references', 'line 32'],
+            'a skills row naming no role' => ['broken-skill-names-no-role.md', 'skills_index_references', 'Line 32'],
         ];
     }
 
@@ -163,13 +162,17 @@ class MasterCvPageTest extends TestCase
     }
 
     /**
-     * The line number is in the page to be acted on, so the finding that
-     * carries it is a button: reachable by keyboard, operable with it, and
-     * answering the only question the number was being asked.
+     * The line number is in the page to be acted on, so it is the label of a
+     * button: reachable by keyboard, operable with it, and answering the only
+     * question the number was being asked.
+     *
+     * The finding's own sentence is what says what is wrong, so it stays
+     * prose beside the button rather than becoming its label — a button that
+     * swallowed the sentence would hide it.
      *
      * The selection itself is the browser's and is checked by hand.
      */
-    public function test_a_problem_is_a_control_that_selects_the_line_it_names(): void
+    public function test_a_problem_names_its_line_on_a_button_and_keeps_its_sentence_as_text(): void
     {
         $this->signIn();
         $this->storeMasterCv('master-cv/broken-missing-id.md');
@@ -177,17 +180,24 @@ class MasterCvPageTest extends TestCase
         $problem = app(InspectMasterCv::class)->handle()->problemsByCheck()['ids'][0];
         $this->assertNotNull($problem->line);
 
-        $control = $this->control($this->render(), $problem->line);
+        $html = $this->render();
+        $control = $this->control($html, $problem->line);
 
         $this->assertStringContainsString('type="button"', $control);
-        $this->assertStringContainsString(e($this->findingText($problem)), $control);
+        $this->assertStringContainsString(
+            e(__('master-cv.actions.select_line', ['line' => $problem->line])),
+            $control,
+        );
+
+        $this->assertStringContainsString(e($problem->message), $html);
+        $this->assertStringNotContainsString(e($problem->message), $control);
     }
 
     /**
      * A note names a line for the same reason a problem does, and the fact
      * that it does not fail the CV has nothing to do with finding it.
      */
-    public function test_a_note_is_a_control_that_selects_the_line_it_names(): void
+    public function test_a_note_names_its_line_on_a_button_and_keeps_its_sentence_as_text(): void
     {
         $this->signIn();
         $this->storeMasterCv();
@@ -195,10 +205,17 @@ class MasterCvPageTest extends TestCase
         $note = app(InspectMasterCv::class)->handle()->notes()[0];
         $this->assertNotNull($note->line);
 
-        $control = $this->control($this->render(), $note->line);
+        $html = $this->render();
+        $control = $this->control($html, $note->line);
 
         $this->assertStringContainsString('type="button"', $control);
-        $this->assertStringContainsString(e($this->findingText($note)), $control);
+        $this->assertStringContainsString(
+            e(__('master-cv.actions.select_line', ['line' => $note->line])),
+            $control,
+        );
+
+        $this->assertStringContainsString(e($note->message), $html);
+        $this->assertStringNotContainsString(e($note->message), $control);
     }
 
     public function test_a_cv_with_no_problems_and_no_notes_has_no_controls(): void
@@ -347,6 +364,130 @@ class MasterCvPageTest extends TestCase
 
         Livewire::test(MasterCvPage::class)
             ->assertActionVisible($this->whereUsed('php-8x-83'));
+    }
+
+    /**
+     * A note is the same mistake as a problem with a sibling that happened to
+     * match, and on a real skills index the notes are the bulk of it. The
+     * question the fix asks is the same question, so it is offered the same
+     * way.
+     */
+    public function test_a_note_from_the_skills_index_carries_a_choice(): void
+    {
+        $this->signIn();
+        $this->storeMarkdown($this->withNotedPhpRow());
+
+        Livewire::test(MasterCvPage::class)
+            ->assertActionVisible($this->whereUsed('php-7x-70-74'));
+    }
+
+    public function test_opening_a_notes_choice_pre_selects_what_its_row_already_names(): void
+    {
+        $this->signIn();
+        $this->storeMarkdown($this->withNotedPhpRow());
+
+        Livewire::test(MasterCvPage::class)
+            ->mountAction($this->whereUsed('php-7x-70-74'))
+            ->assertActionDataSet(['where_used' => [
+                'harlequin-transit',
+                'northgate-tickets',
+                'pelham-civic-data',
+            ]]);
+    }
+
+    /**
+     * The owner is correcting part of a row. Saved without the selection
+     * being changed it is not a correction at all, and rewriting anyway would
+     * reword the parts that were right — "Harlequin Transit (legacy,
+     * upgraded)" written back as "Harlequin Transit" — which is harm the
+     * finding never asked for.
+     */
+    public function test_saving_a_notes_choice_untouched_leaves_the_document_byte_identical(): void
+    {
+        $this->signIn();
+        $this->storeMarkdown($this->withNotedPhpRow());
+
+        Livewire::test(MasterCvPage::class)
+            ->mountAction($this->whereUsed('php-7x-70-74'))
+            ->callMountedAction()
+            ->assertHasNoActionErrors();
+
+        $this->assertSame($this->withNotedPhpRow(), MasterCv::query()->sole()->markdown);
+    }
+
+    public function test_correcting_a_notes_row_keeps_the_parts_of_it_that_were_right(): void
+    {
+        $this->signIn();
+        $this->storeMarkdown($this->withNotedPhpRow());
+
+        Livewire::test(MasterCvPage::class)
+            ->callAction($this->whereUsed('php-7x-70-74'), ['where_used' => [
+                'harlequin-transit',
+                'northgate-tickets',
+                'pelham-civic-data',
+                'larkspur-media',
+            ]])
+            ->assertHasNoActionErrors();
+
+        $this->assertSame(
+            str_replace(
+                '| PHP 7.x (7.0, 7.4) | Harlequin Transit (legacy, upgraded), Pentland Haulage, Northgate Tickets, Pelham Civic Data |',
+                '| PHP 7.x (7.0, 7.4) | Harlequin Transit, Northgate Tickets, Pelham Civic Data, Larkspur Media |',
+                $this->withNotedPhpRow(),
+            ),
+            MasterCv::query()->sole()->markdown,
+        );
+    }
+
+    /**
+     * A cell may name more than one thing the file does not hold, and each is
+     * its own note. Every one of them asks the same question about the same
+     * row, so every one of them carries the way to answer it.
+     */
+    public function test_each_note_on_one_row_carries_the_choice(): void
+    {
+        $this->signIn();
+        $this->storeMarkdown($this->withTwoNotedPartsOnOneRow());
+
+        $notes = app(InspectMasterCv::class)->handle()->notesByCheck()['skills_index_references'];
+        $this->assertCount(2, $notes);
+
+        $html = $this->render();
+
+        foreach ($notes as $note) {
+            $this->assertStringContainsString(e($note->message), $html);
+            $this->assertStringContainsString("mountAction('whereUsed_php-7x-70-74'", $this->item($html, $note->message));
+        }
+
+        Livewire::test(MasterCvPage::class)
+            ->callAction($this->whereUsed('php-7x-70-74'), ['where_used' => ['harlequin-transit']])
+            ->assertHasNoActionErrors();
+
+        $this->assertStringContainsString(
+            '| PHP 7.x (7.0, 7.4) | Harlequin Transit |',
+            MasterCv::query()->sole()->markdown,
+        );
+    }
+
+    /**
+     * A reader has to be able to tell the sentence from the things they can
+     * press, and a control drawn as prose is a control nobody presses.
+     */
+    public function test_the_choice_and_the_line_render_as_buttons(): void
+    {
+        $this->signIn();
+        $this->storeMarkdown($this->withNotedPhpRow());
+
+        $note = app(InspectMasterCv::class)->handle()->notesByCheck()['skills_index_references'][0];
+        $this->assertNotNull($note->line);
+
+        $html = $this->render();
+
+        foreach ([$this->control($html, $note->line), $this->choice($html)] as $control) {
+            $this->assertStringContainsString('type="button"', $control);
+            $this->assertStringContainsString('fi-btn', $control);
+            $this->assertStringNotContainsString('fi-link', $control);
+        }
     }
 
     /**
@@ -523,6 +664,40 @@ class MasterCvPageTest extends TestCase
 
     /**
      * The fictional CV with one skills-index row naming an employer it does
+     * not have beside three roles it does — the shape that earns a note
+     * rather than a problem, and the shape a row is in when its author is
+     * correcting part of it. The qualifier on the first of them is their own
+     * prose, and is what an untouched save must not lose.
+     */
+    private function withNotedPhpRow(): string
+    {
+        return str_replace(
+            $this->phpSevenRow(),
+            '| PHP 7.x (7.0, 7.4) | Harlequin Transit (legacy, upgraded), Pentland Haulage, Northgate Tickets, Pelham Civic Data |',
+            $this->fixture(),
+        );
+    }
+
+    /**
+     * The same row naming two employers the file does not hold, which is two
+     * notes against one row.
+     */
+    private function withTwoNotedPartsOnOneRow(): string
+    {
+        return str_replace(
+            $this->phpSevenRow(),
+            '| PHP 7.x (7.0, 7.4) | Harlequin Transit, Pentland Haulage, Marcham Reads, Northgate Tickets |',
+            $this->fixture(),
+        );
+    }
+
+    private function phpSevenRow(): string
+    {
+        return '| PHP 7.x (7.0, 7.4) | Harlequin Transit (legacy, upgraded), Northgate Tickets, Pelham Civic Data |';
+    }
+
+    /**
+     * The fictional CV with one skills-index row naming an employer it does
      * not have — one line apart from a CV that passes lint.
      */
     private function withBrokenRustRow(): string
@@ -561,6 +736,46 @@ class MasterCvPageTest extends TestCase
     }
 
     /**
+     * The list item a finding's message was written into.
+     */
+    private function item(string $html, string $message): string
+    {
+        foreach ($this->items($html) as $item) {
+            if (str_contains($item, e($message))) {
+                return $item;
+            }
+        }
+
+        $this->fail('Nothing on the page says "'.$message.'".');
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function items(string $html): array
+    {
+        preg_match_all('#<li>.*?</li>#s', $html, $matches);
+
+        return $matches[0];
+    }
+
+    /**
+     * The control that opens the guided fix, markup and all.
+     */
+    private function choice(string $html): string
+    {
+        $matched = preg_match(
+            '#<button[^>]*mountAction\(\x27whereUsed[^>]*>.*?</button>#s',
+            $html,
+            $matches,
+        );
+
+        $this->assertSame(1, $matched, 'No control opens a guided fix.');
+
+        return $matches[0];
+    }
+
+    /**
      * Every control on the page that selects a line.
      *
      * @return list<string>
@@ -570,13 +785,5 @@ class MasterCvPageTest extends TestCase
         preg_match_all('#<button[^>]*x-on:click="selectLine\(\d+\)"[^>]*>.*?</button>#s', $html, $matches);
 
         return $matches[0];
-    }
-
-    private function findingText(Finding $finding): string
-    {
-        return (string) __('master-cv.finding', [
-            'line' => $finding->line,
-            'message' => $finding->message,
-        ]);
     }
 }

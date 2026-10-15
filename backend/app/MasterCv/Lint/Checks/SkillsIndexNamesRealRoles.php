@@ -46,10 +46,15 @@ class SkillsIndexNamesRealRoles implements Check
             }
 
             foreach ($names->unmatched($skill->whereUsed) as $part) {
+                // The same remedy as the problem above, because it is the
+                // same question: which of this document's roles and projects
+                // does the row name. A sibling that happened to match is why
+                // one of them fails the CV and the other does not, and that
+                // has nothing to do with whether the row can be corrected.
                 $findings[] = Finding::note($this->name(), $skill->line, sprintf(
                     '"%s" is not a role or project in this file.',
                     $part,
-                ));
+                ), Remedy::ChooseWhereUsed);
             }
         }
 
