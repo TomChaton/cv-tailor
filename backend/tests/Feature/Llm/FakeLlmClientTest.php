@@ -142,11 +142,11 @@ class FakeLlmClientTest extends TestCase
 
         $malformed = $this->resultFor($results, '42');
         $this->assertSame(BatchOutcome::Errored, $malformed->outcome);
-        $this->assertTrue($malformed->failure?->isMalformedRequest());
+        $this->assertTrue($malformed->failure?->kind->isMalformedRequest());
 
         $providerSide = $this->resultFor($results, '43');
         $this->assertSame(BatchOutcome::Errored, $providerSide->outcome);
-        $this->assertFalse($providerSide->failure?->isMalformedRequest());
+        $this->assertFalse($providerSide->failure?->kind->isMalformedRequest());
 
         $this->assertSame(BatchOutcome::Canceled, $this->resultFor($results, '44')->outcome);
         $this->assertSame(BatchOutcome::Expired, $this->resultFor($results, '45')->outcome);

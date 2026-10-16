@@ -23,11 +23,25 @@ use App\MasterCv\RoleMode;
  *
  * **ID enums are scoped to the kind the field takes** — skills in
  * `key_skills`, employment roles in `roles`, projects in
- * `independent_projects`, bullets in a selected item. Only evidence takes the
- * broad list, because evidence legitimately spans every kind. This is what
- * makes a malformed selection impossible rather than detectable, and it is why
- * the two containers have shapes of their own instead of sharing one: an
- * independent project cannot be returned under an employer.
+ * `independent_projects`, bullets in a selected item. This is what makes a
+ * malformed selection impossible rather than detectable, and it is why the two
+ * containers have shapes of their own instead of sharing one: an independent
+ * project cannot be returned under an employer.
+ *
+ * **The provider compiles this schema into a grammar, and refuses one that is
+ * too complex to compile**, so the total number of enum values is a budget
+ * rather than a free choice. `prompt.built` reports it as `enum_count`.
+ *
+ * **Evidence takes a plain string, not an enum.** The fields that cite why
+ * something was chosen — `summary.supports`, a selected item's `supports`, a
+ * requirement's `evidence` — span every kind, so no scoped enum fits them and
+ * an enum of their own would list every ID of every kind: the budget spent
+ * twice over to say what the scoped enums have already said. The scoped enums
+ * decide what the CV says and are what cannot be given up; a citation cannot
+ * put a claim in the CV that the selection did not already put there. So an ID
+ * outside the master CV can be cited here, and `IdsResolve` and
+ * `RewordingsCarrySupport` catch it between them before anything renders. A
+ * combined enum here would buy nothing and cost the budget.
  *
  * Each repeated shape sits once in `$defs` and is referenced. A `$ref` carries
  * no sibling keywords — not every reader of JSON Schema takes them — so
@@ -35,8 +49,6 @@ use App\MasterCv\RoleMode;
  */
 final readonly class OutputSchema
 {
-    private const ANY_ID = '#/$defs/master_cv_id';
-
     private const EMPLOYMENT_ROLE_ID = '#/$defs/employment_role_id';
 
     private const PROJECT_ID = '#/$defs/independent_project_id';
@@ -91,10 +103,7 @@ final readonly class OutputSchema
                     'required' => ['text', 'supports'],
                     'properties' => [
                         'text' => ['type' => 'string'],
-                        'supports' => self::listOf(
-                            self::ANY_ID,
-                            'The master CV IDs this text draws on.',
-                        ),
+                        'supports' => self::stringList('The master CV IDs this text draws on.'),
                     ],
                 ],
                 'key_skills' => self::listOf(
@@ -147,8 +156,7 @@ final readonly class OutputSchema
                     ],
                     'priority' => self::enum(RequirementPriority::values()),
                     'status' => self::enum(RequirementStatus::values()),
-                    'evidence' => self::listOf(
-                        self::ANY_ID,
+                    'evidence' => self::stringList(
                         'The master CV IDs that evidence it. Empty for a gap.',
                     ),
                     'note' => ['type' => 'string', 'description' => 'One sentence for the owner.'],
@@ -170,8 +178,7 @@ final readonly class OutputSchema
                         'type' => ['string', 'null'],
                         'description' => "Null to use the master CV's own wording, which is the normal case.",
                     ],
-                    'supports' => self::listOf(
-                        self::ANY_ID,
+                    'supports' => self::stringList(
                         'The master CV IDs a rewording draws on. Empty when text is null.',
                     ),
                 ],
@@ -190,7 +197,6 @@ final readonly class OutputSchema
                     ],
                 ],
             ],
-            'master_cv_id' => self::enum($ids->all),
             'employment_role_id' => self::enum($ids->employmentRoles),
             'independent_project_id' => self::enum($ids->independentProjects),
             'item_id' => self::enum($ids->items),

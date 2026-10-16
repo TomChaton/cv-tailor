@@ -62,7 +62,14 @@ class BuildGenerationRequestTest extends TestCase
 
         $ids = SelectableIds::from($this->parseFixture());
 
-        foreach (['master_cv_id' => $ids->all, 'skill_id' => $ids->skills] as $def => $expected) {
+        $enums = [
+            'item_id' => $ids->items,
+            'skill_id' => $ids->skills,
+            'employment_role_id' => $ids->employmentRoles,
+            'independent_project_id' => $ids->independentProjects,
+        ];
+
+        foreach ($enums as $def => $expected) {
             $enum = $defs[$def] ?? null;
             $this->assertIsArray($enum);
             $this->assertSame($expected, $enum['enum'] ?? null);

@@ -10,22 +10,27 @@ use App\MasterCv\RoleKind;
  * Every master CV ID the model may name, by kind, and every headline title it
  * may choose from.
  *
- * These become the enums in the output schema, so an ID that is not here
- * cannot come back at all: the provider refuses it rather than a validator
- * catching it afterwards.
+ * The kind-scoped lists become the enums in the output schema, so an ID that
+ * is not in the one its field takes cannot come back at all: the provider
+ * refuses it rather than a validator catching it afterwards.
  *
  * **The lists are kept apart by kind** because the fields that take them are.
  * A skill ID in `key_skills` and an employment role ID in `roles` are
  * different questions, and one list of every ID would answer neither: it would
  * accept a skill where a role belongs and leave the nonsense for a later step
- * to notice. `all` exists for the fields where evidence legitimately spans
- * every kind.
+ * to notice.
  *
  * An enum therefore guarantees that an ID **exists** in the master CV and, for
  * a kind-scoped field, that it is **of the right kind**. It does not guarantee
  * that the ID belongs where it was used: an achievement of one employer's
  * filed under another is a misattribution, and catching that is the
  * validators' work.
+ *
+ * **`all` is a measurement, not an enum.** The provider compiles the schema
+ * and refuses one that is too complex, so the number of IDs a CV offers is a
+ * budget; `all` is what `prompt.built` reports as `enum_count` so that budget
+ * can be watched. No field in the schema takes it — see `OutputSchema` for why
+ * evidence does not.
  *
  * **`TODO` content is left out entirely** rather than offered and flagged. The
  * author has said the fact is unknown, so there is nothing to offer, and
@@ -34,7 +39,8 @@ use App\MasterCv\RoleKind;
 final readonly class SelectableIds
 {
     /**
-     * @param  list<string>  $all  Every ID below, in the order the CV gives them.
+     * @param  list<string>  $all  Every ID below, in the order the CV gives
+     *                             them. Counted, never offered as an enum.
      * @param  list<string>  $employmentRoles
      * @param  list<string>  $independentProjects
      * @param  list<string>  $items  Achievements and sub-bullets, of both.

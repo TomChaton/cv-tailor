@@ -16,6 +16,7 @@ use App\Llm\LlmReply;
 use App\Llm\LlmRequest;
 use App\Llm\LlmResponse;
 use App\Llm\ModelRegistry;
+use App\Llm\ProviderError;
 use App\Llm\TokenUsage;
 use Generator;
 use LogicException;
@@ -46,7 +47,7 @@ final class FakeLlmClient implements LlmClient
     /** @var list<array{batch_id: string, requests: list<BatchRequest>}> */
     private array $submittedBatches = [];
 
-    /** @var list<array{customId: string, outcome: BatchOutcome, fixture: string|null, failure: LlmFailureKind|null}> */
+    /** @var list<array{customId: string, outcome: BatchOutcome, fixture: string|null, failure: ProviderError|null}> */
     private array $queuedResults = [];
 
     /** @var list<array{fixture: string|null, failure: LlmFailureKind|null}> */
@@ -136,17 +137,39 @@ final class FakeLlmClient implements LlmClient
     /**
      * Queue an `errored` result. A `BadRequest` kind is the malformed-request
      * branch the batch lifecycle must not retry.
+     *
+     * A kind is enough for a test that only cares which branch is taken. A
+     * test that cares what the owner is told about the refusal passes the
+     * whole error.
      */
-    public function willError(string $customId, LlmFailureKind $kind): self
+    public function willError(string $customId, LlmFailureKind|ProviderError $error): self
     {
         $this->queuedResults[] = [
             'customId' => $customId,
             'outcome' => BatchOutcome::Errored,
             'fixture' => null,
-            'failure' => $kind,
+            'failure' => $error instanceof ProviderError ? $error : self::errorOfKind($error),
         ];
 
         return $this;
+    }
+
+    /**
+     * A representative refusal for a kind, so a test that does not care what
+     * the provider said does not have to invent it.
+     */
+    private static function errorOfKind(LlmFailureKind $kind): ProviderError
+    {
+        return new ProviderError(
+            kind: $kind,
+            type: match ($kind) {
+                LlmFailureKind::BadRequest => 'invalid_request_error',
+                LlmFailureKind::RateLimit => 'rate_limit_error',
+                LlmFailureKind::ServerError => 'api_error',
+            },
+            message: 'The provider would not serve this request.',
+            providerRequestId: 'req_fake',
+        );
     }
 
     public function willCancel(string $customId): self
@@ -289,7 +312,7 @@ final class FakeLlmClient implements LlmClient
                 ),
                 BatchOutcome::Errored => BatchResult::errored(
                     $queued['customId'],
-                    $queued['failure'] ?? LlmFailureKind::ServerError,
+                    $queued['failure'] ?? self::errorOfKind(LlmFailureKind::ServerError),
                 ),
                 BatchOutcome::Canceled => BatchResult::canceled($queued['customId']),
                 BatchOutcome::Expired => BatchResult::expired($queued['customId']),

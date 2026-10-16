@@ -20,7 +20,7 @@ final readonly class BatchResult
         public string $customId,
         public BatchOutcome $outcome,
         public ?LlmReply $reply = null,
-        public ?LlmFailureKind $failure = null,
+        public ?ProviderError $failure = null,
     ) {}
 
     public static function succeeded(string $customId, LlmReply $reply): self
@@ -28,7 +28,7 @@ final readonly class BatchResult
         return new self($customId, BatchOutcome::Succeeded, reply: $reply);
     }
 
-    public static function errored(string $customId, LlmFailureKind $failure): self
+    public static function errored(string $customId, ProviderError $failure): self
     {
         return new self($customId, BatchOutcome::Errored, failure: $failure);
     }
