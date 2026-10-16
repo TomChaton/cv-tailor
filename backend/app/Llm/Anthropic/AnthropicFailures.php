@@ -10,6 +10,7 @@ use Anthropic\Core\Exceptions\RateLimitException;
 use Anthropic\ErrorResponse;
 use App\Llm\LlmFailure;
 use App\Llm\LlmFailureKind;
+use App\Llm\ProviderError;
 
 /**
  * Translates the provider's failures into the application's own.
@@ -31,14 +32,28 @@ final class AnthropicFailures
     }
 
     /**
-     * The kind behind an `errored` batch result.
+     * The error behind an `errored` batch result.
      *
      * A malformed request is the one the batch lifecycle must not retry, so it
      * is told apart from a provider-side failure here rather than nowhere.
+     *
+     * The provider's own type and message travel with the kind. A refusal of a
+     * request this application built is a refusal the owner has to act on, and
+     * the kind alone says only that something was refused.
      */
-    public static function fromErrorResponse(ErrorResponse $response): LlmFailureKind
+    public static function fromErrorResponse(ErrorResponse $response): ProviderError
     {
-        return match ($response->error->type) {
+        return new ProviderError(
+            kind: self::kindOfErrorType($response->error->type),
+            type: $response->error->type,
+            message: $response->error->message,
+            providerRequestId: $response->requestID,
+        );
+    }
+
+    private static function kindOfErrorType(string $type): LlmFailureKind
+    {
+        return match ($type) {
             'invalid_request_error',
             'authentication_error',
             'permission_error',

@@ -143,7 +143,9 @@ class ApplyResult
 
     private function errored(LlmBatch $batch, Revision $revision, BatchResult $result): void
     {
-        if ($result->failure?->isMalformedRequest() !== true) {
+        $error = $result->failure;
+
+        if ($error?->kind->isMalformedRequest() !== true) {
             $this->spend($batch, $revision, SubmissionOutcome::Errored, 'errored');
 
             return;
@@ -156,7 +158,7 @@ class ApplyResult
         // and a re-arm pick up everything that was waiting, intact.
         $revision->fill(['status' => RevisionStatus::Pending])->save();
 
-        $this->events->requestInvalid($revision->id, $batch);
+        $this->events->requestInvalid($revision->id, $batch, $error);
     }
 
     /**

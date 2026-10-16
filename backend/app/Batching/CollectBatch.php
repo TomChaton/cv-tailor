@@ -174,6 +174,6 @@ class CollectBatch
     private function isMalformedRequest(BatchResult $result): bool
     {
         return $result->outcome === BatchOutcome::Errored
-            && $result->failure?->isMalformedRequest() === true;
+            && $result->failure?->kind->isMalformedRequest() === true;
     }
 }

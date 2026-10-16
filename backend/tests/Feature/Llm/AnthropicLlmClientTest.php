@@ -311,7 +311,7 @@ class AnthropicLlmClientTest extends TestCase
 
         $errored = $this->resultFor($byCustomId, '42');
         $this->assertSame(BatchOutcome::Errored, $errored->outcome);
-        $this->assertTrue($errored->failure?->isMalformedRequest());
+        $this->assertTrue($errored->failure?->kind->isMalformedRequest());
 
         $this->assertSame(BatchOutcome::Expired, $this->resultFor($byCustomId, '43')->outcome);
         $this->assertSame(BatchOutcome::Canceled, $this->resultFor($byCustomId, '44')->outcome);

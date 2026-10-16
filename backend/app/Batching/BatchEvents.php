@@ -2,6 +2,7 @@
 
 namespace App\Batching;
 
+use App\Llm\ProviderError;
 use App\Models\LlmBatch;
 use App\Models\Revision;
 use App\Observability\EventLogger;
@@ -71,12 +72,21 @@ final readonly class BatchEvents
     /**
      * The provider refused the request we built. The revision is not at fault,
      * and this is the signal that the request builder is broken.
+     *
+     * It carries the provider's own words, because the fault is this
+     * application's and the owner is the one who has to act on it: a line
+     * saying only that a request was refused sends them round the application
+     * to the provider's SDK to find out what for. The provider's type, message
+     * and request ID, and never the request, the schema or any CV content.
      */
-    public function requestInvalid(int $revisionId, LlmBatch $batch): void
+    public function requestInvalid(int $revisionId, LlmBatch $batch, ProviderError $error): void
     {
         $this->log->warning('batch.request_invalid', [
             'revision_id' => $revisionId,
             'llm_batch_id' => $batch->id,
+            'provider_error_type' => $error->type,
+            'provider_error_message' => $error->message,
+            'provider_request_id' => $error->providerRequestId,
         ]);
     }
 

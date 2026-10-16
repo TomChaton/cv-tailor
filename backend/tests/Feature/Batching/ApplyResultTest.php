@@ -9,6 +9,7 @@ use App\Jobs\ValidateGeneratedRevision;
 use App\Llm\BatchResult;
 use App\Llm\LlmFailureKind;
 use App\Llm\LlmReply;
+use App\Llm\ProviderError;
 use App\Llm\TokenUsage;
 use App\Llm\UnknownModel;
 use App\Models\LlmBatch;
@@ -163,7 +164,7 @@ class ApplyResultTest extends TestCase
 
         $this->apply()->handle(
             $batch,
-            BatchResult::errored((string) $revision->id, LlmFailureKind::ServerError),
+            BatchResult::errored((string) $revision->id, $this->providerError(LlmFailureKind::ServerError)),
         );
 
         $stored = $revision->fresh();
@@ -214,7 +215,7 @@ class ApplyResultTest extends TestCase
 
         $this->apply()->handle(
             $batch,
-            BatchResult::errored((string) $revision->id, LlmFailureKind::BadRequest),
+            BatchResult::errored((string) $revision->id, $this->providerError(LlmFailureKind::BadRequest)),
         );
 
         $stored = $revision->fresh();
@@ -233,6 +234,31 @@ class ApplyResultTest extends TestCase
     }
 
     /**
+     * The fault is this application's and the owner is the one who has to act
+     * on it, so the line says what the provider refused the request for. A
+     * line saying only that a request was refused sends them round the
+     * application to the provider's SDK to find out.
+     */
+    public function test_a_malformed_request_records_what_the_provider_said(): void
+    {
+        [$batch, $revision] = $this->submitted();
+
+        $this->apply()->handle($batch, BatchResult::errored((string) $revision->id, new ProviderError(
+            kind: LlmFailureKind::BadRequest,
+            type: 'invalid_request_error',
+            message: 'Schema is too complex for compilation.',
+            providerRequestId: 'req_abc',
+        )));
+
+        $line = $this->log->first('batch.request_invalid');
+
+        $this->assertNotNull($line);
+        $this->assertSame('invalid_request_error', $line['context']['provider_error_type']);
+        $this->assertSame('Schema is too complex for compilation.', $line['context']['provider_error_message']);
+        $this->assertSame('req_abc', $line['context']['provider_request_id']);
+    }
+
+    /**
      * A revision caught by one bad batch after another is never driven to
      * `failed` by it, however many times it goes out.
      */
@@ -244,7 +270,7 @@ class ApplyResultTest extends TestCase
 
         $this->apply()->handle(
             $batch,
-            BatchResult::errored((string) $revision->id, LlmFailureKind::BadRequest),
+            BatchResult::errored((string) $revision->id, $this->providerError(LlmFailureKind::BadRequest)),
         );
 
         $this->assertSame(RevisionStatus::Pending, $revision->fresh()?->status);
@@ -417,5 +443,13 @@ class ApplyResultTest extends TestCase
     private function apply(): ApplyResult
     {
         return $this->app->make(ApplyResult::class);
+    }
+
+    /**
+     * A refusal whose words the test does not care about.
+     */
+    private function providerError(LlmFailureKind $kind): ProviderError
+    {
+        return new ProviderError($kind, 'invalid_request_error', 'Refused.');
     }
 }

@@ -776,25 +776,48 @@ everything else.**
 - **`review_notes`** — the model's notes for the owner: gaps, judgement calls,
   any role promoted from its default mode and why.
 
-ID fields are **enums built from the parsed master CV version** in the
-structured-output schema, so an invented ID is impossible rather than merely
+**The provider compiles the schema into a grammar and refuses one it cannot
+compile**, so the total number of enum values is a budget rather than a free
+choice. That fact shapes everything below it: a CV of a real size offers a few
+hundred IDs, and the question is never whether an enum would be nice to have
+but what the budget is best spent on. `prompt.built` reports the number of IDs
+a CV offers as `enum_count`.
+
+**The IDs the model may select are enums built from the parsed master CV
+version**, so an invented *selection* is impossible rather than merely
 detectable. The schema is therefore generated per CV version.
 
-**The ID enums are scoped to the kind each field takes**, and live in `$defs`
+**Those enums are scoped to the kind each field takes**, and live in `$defs`
 so a few hundred IDs are listed once rather than at every field that takes one.
 Skills-index rows in `key_skills`, employment roles in `roles`, independent
 projects in `independent_projects`, bullets in a selected item, roles and
-projects in a promotion. Only evidence — `summary.supports`, an item's
-`supports`, a requirement's evidence — takes the broad list of every ID,
-because evidence legitimately spans every kind.
+projects in a promotion.
 
-So an enum guarantees that an ID **exists** in the master CV and, where the
-field is scoped, that it is **of the right kind**. It does not guarantee that
-the ID **belongs** where it was used: an achievement of one employer's filed
-under another is a misattribution within a kind, and catching that is the
-validators' work. One broad list would have been smaller and would have given
-up the kind as well, leaving three classes of type confusion — a skill offered
-where a role belongs, and the reverse — for a later step to maybe catch.
+So an enum guarantees that an ID **exists** in the master CV and that it is
+**of the right kind**. It does not guarantee that the ID **belongs** where it
+was used: an achievement of one employer's filed under another is a
+misattribution within a kind, and catching that is the validators' work. One
+broad list would have been smaller and would have given up the kind as well,
+leaving three classes of type confusion — a skill offered where a role belongs,
+and the reverse — for a later step to maybe catch.
+
+**Evidence is a plain string rather than an enum, and that is where the budget
+goes furthest.** The fields that cite why something was chosen —
+`summary.supports`, an item's `supports`, a requirement's `evidence` — span
+every kind, so no scoped enum fits them and an enum of their own would list
+every ID of every kind. **Every ID would then appear in the schema twice**:
+once in the enum of its own kind and once in the combined list, seven hundred
+entries where three hundred and fifty do. A combined list here is not an
+obvious improvement waiting to be made; it is the budget spent twice to say
+what the scoped enums have already said.
+
+**Keep the distinction sharp.** *Selection* is constrained by the enums, and
+an ID outside the master CV cannot be chosen at all. *Evidence* is a string,
+so an ID outside the master CV can be cited — and `IdsResolve` and
+`RewordingsCarrySupport` catch it between them, which blocks the revision and
+stops it rendering. The trade is acceptable because a citation names why
+something was chosen and cannot itself put a claim in the CV: the selection
+enums decide what the CV says, which is why they are not the ones given up.
 
 **The two containers have shapes of their own** rather than sharing one, since
 the kind of ID is what differs between them. The duplication buys an
@@ -1922,6 +1945,14 @@ goes where it is told, which has to be somewhere writable, and
   line's own severity is not something a caller may overwrite. A line with a
   severity of its own to report, such as the level of the finding it answered,
   names the key for the thing it describes.
+- **A fixture small enough to pass every test can be too small to exercise a
+  limit the provider applies.** The output schema is built per master CV
+  version, so its size is the CV's size: the fictional fixture most tests use
+  offers under a hundred IDs where a real CV offers a few hundred, and a schema
+  too complex for the provider to compile is one those tests cannot build. So
+  anything whose cost grows with the master CV is exercised against a fixture
+  of realistic size as well — `tests/Fixtures/master-cv/realistic-size.md`,
+  fictional like every other fixture.
 - **The test suite supplies its own environment** and is handed no `.env`, so a
   result never depends on how a particular machine is configured. Test values
   belong in `phpunit.xml`.

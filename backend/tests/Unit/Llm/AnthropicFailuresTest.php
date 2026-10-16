@@ -100,6 +100,39 @@ class AnthropicFailuresTest extends TestCase
     ): void {
         $response = ErrorResponse::with(error: $error, requestID: 'req_abc');
 
-        $this->assertSame($expected, AnthropicFailures::fromErrorResponse($response));
+        $this->assertSame($expected, AnthropicFailures::fromErrorResponse($response)->kind);
+    }
+
+    /**
+     * A refusal the owner has to act on carries the provider's own words. The
+     * kind says which branch the batch lifecycle takes and nothing a person
+     * can act on.
+     */
+    public function test_an_errored_batch_result_carries_the_providers_type_message_and_request_id(): void
+    {
+        $response = ErrorResponse::with(
+            error: InvalidRequestError::with(message: 'Schema is too complex for compilation.'),
+            requestID: 'req_abc',
+        );
+
+        $error = AnthropicFailures::fromErrorResponse($response);
+
+        $this->assertSame('invalid_request_error', $error->type);
+        $this->assertSame('Schema is too complex for compilation.', $error->message);
+        $this->assertSame('req_abc', $error->providerRequestId);
+    }
+
+    /**
+     * Nothing the provider says is allowed to become a route by which a
+     * request's own contents reach a log file.
+     */
+    public function test_a_providers_message_is_bounded(): void
+    {
+        $response = ErrorResponse::with(
+            error: InvalidRequestError::with(message: str_repeat('a', 2_000)),
+            requestID: null,
+        );
+
+        $this->assertSame(500, mb_strlen(AnthropicFailures::fromErrorResponse($response)->message));
     }
 }

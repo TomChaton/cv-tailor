@@ -7,6 +7,7 @@ use App\Models\Revision;
 use App\Observability\EventLogger;
 use App\Revisions\RevisionSource;
 use App\Revisions\RevisionStatus;
+use App\Validation\RenderGuard;
 use App\Validation\RevisionCannotBeValidated;
 use App\Validation\ValidateRevision;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -139,6 +140,66 @@ class ValidateRevisionTest extends TestCase
             'technology_to_role',
             'versions',
         ], $raised);
+    }
+
+    /**
+     * The output schema does not constrain the IDs an evidence field cites —
+     * one enum listing every ID of every kind was more than the provider
+     * would compile — so this is the whole of what stands between an invented
+     * citation and a rendered CV. It is not an improvement on the enum; it is
+     * what the enum was traded for, and it has to be seen to work.
+     */
+    public function test_evidence_naming_an_id_the_master_cv_does_not_hold_blocks_the_revision(): void
+    {
+        $revision = $this->revision($this->selection([
+            'jd_analysis' => [$this->requirement('Kubernetes', 'met', ['harlequin-transit.99'])],
+        ]));
+
+        $this->validate()->handle($revision);
+
+        $findings = $this->storedFindings($revision);
+
+        $this->assertCount(1, $findings);
+        $this->assertSame('ids_resolve', $findings[0]['check']);
+        $this->assertSame('blocking', $findings[0]['severity']);
+        $this->assertSame('jd_analysis[0].evidence[0]', $findings[0]['field']);
+
+        $this->assertFalse($this->app->make(RenderGuard::class)->allows($revision->refresh()));
+    }
+
+    /**
+     * The same guarantee for the other two evidence fields, which the
+     * rewording check owns because it has more to say about them.
+     */
+    public function test_support_naming_an_id_the_master_cv_does_not_hold_blocks_the_revision(): void
+    {
+        $revision = $this->revision($this->selectionWithSummary(
+            'Senior backend engineer who has led a dispatch platform.',
+            ['harlequin-transit.99'],
+        ));
+
+        $this->validate()->handle($revision);
+
+        $findings = $this->storedFindings($revision);
+
+        $this->assertCount(1, $findings);
+        $this->assertSame('rewordings_carry_support', $findings[0]['check']);
+        $this->assertSame('blocking', $findings[0]['severity']);
+        $this->assertSame('summary.supports[0]', $findings[0]['field']);
+
+        $this->assertFalse($this->app->make(RenderGuard::class)->allows($revision->refresh()));
+    }
+
+    public function test_evidence_naming_an_id_the_master_cv_holds_passes(): void
+    {
+        $revision = $this->revision($this->selection([
+            'jd_analysis' => [$this->requirement('Modern PHP', 'met', ['harlequin-transit.6'])],
+        ]));
+
+        $this->validate()->handle($revision);
+
+        $this->assertSame([], $this->storedFindings($revision));
+        $this->assertTrue($this->app->make(RenderGuard::class)->allows($revision->refresh()));
     }
 
     public function test_it_logs_the_counts_and_never_the_findings(): void
