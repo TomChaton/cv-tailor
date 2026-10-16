@@ -9,6 +9,7 @@ use App\Generation\SelectableIds;
 use App\Llm\LlmPurpose;
 use App\Llm\LlmRequest;
 use App\Llm\SystemBlock;
+use App\MasterCv\PresentationPolicy;
 use App\Models\MasterCvVersion;
 use App\Models\Revision;
 use App\Observability\EventLogger;
@@ -74,6 +75,25 @@ class BuildGenerationRequestTest extends TestCase
             $this->assertIsArray($enum);
             $this->assertSame($expected, $enum['enum'] ?? null);
         }
+    }
+
+    /**
+     * The cap travels in the document, so it is read out of one here rather
+     * than handed to the schema by a policy nothing wrote.
+     */
+    public function test_the_key_skills_cap_comes_from_the_cvs_front_matter(): void
+    {
+        $revision = $this->revisionFrom($this->fixtureCapping(5));
+
+        $this->assertSame(5, $this->keySkills($this->build($revision)));
+    }
+
+    public function test_a_cv_that_names_no_cap_is_capped_at_the_default(): void
+    {
+        $this->assertSame(
+            PresentationPolicy::DEFAULT_MAX_KEY_SKILLS,
+            $this->keySkills($this->build($this->revision())),
+        );
     }
 
     public function test_it_asks_for_the_configured_room_to_answer_in(): void
@@ -148,6 +168,10 @@ class BuildGenerationRequestTest extends TestCase
                 $this->assertSame($revision->master_cv_version_id, $context['master_cv_version_id']);
                 $this->assertSame(PromptVersion::CURRENT, $context['prompt_version']);
                 $this->assertSame($expected, $context['enum_count']);
+                $this->assertSame(
+                    PresentationPolicy::DEFAULT_MAX_KEY_SKILLS,
+                    $context['key_skills_cap'],
+                );
                 $this->assertGreaterThan(0, $context['instructions_chars']);
                 $this->assertGreaterThan(0, $context['master_cv_chars']);
                 $this->assertGreaterThan(0, $context['brief_chars']);
@@ -220,9 +244,53 @@ class BuildGenerationRequestTest extends TestCase
      */
     private function revision(array $attributes = [], string $fixture = 'master-cv.md'): Revision
     {
+        return $this->revisionFrom($this->fixture($fixture), $attributes);
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    private function revisionFrom(string $content, array $attributes = []): Revision
+    {
         return Revision::factory()
-            ->for(MasterCvVersion::factory()->content($this->fixture($fixture)))
+            ->for(MasterCvVersion::factory()->content($content))
             ->create($attributes);
+    }
+
+    /**
+     * The fictional CV with one more line in its presentation policy.
+     */
+    private function fixtureCapping(int $cap): string
+    {
+        $content = str_replace(
+            "presentation:\n",
+            "presentation:\n  max_key_skills: ".$cap."\n",
+            $this->fixture(),
+        );
+
+        $this->assertNotSame($this->fixture(), $content);
+
+        return $content;
+    }
+
+    /**
+     * The cap the built request puts on the key skills list.
+     */
+    private function keySkills(LlmRequest $request): int
+    {
+        $schema = $request->schema;
+        $this->assertIsArray($schema);
+
+        $properties = $schema['properties'] ?? null;
+        $this->assertIsArray($properties);
+
+        $keySkills = $properties['key_skills'] ?? null;
+        $this->assertIsArray($keySkills);
+
+        $cap = $keySkills['maxItems'] ?? null;
+        $this->assertIsInt($cap);
+
+        return $cap;
     }
 
     private function build(Revision $revision): LlmRequest

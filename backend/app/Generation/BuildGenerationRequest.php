@@ -77,6 +77,7 @@ class BuildGenerationRequest implements BatchRequestBuilder
         $this->events->promptBuilt(
             revision: $revision,
             enumCount: $ids->count(),
+            keySkillsCap: $cv->presentation->maxKeySkills,
             instructionsChars: mb_strlen($instructions),
             masterCvChars: mb_strlen($masterCv),
             briefChars: mb_strlen($brief),
@@ -90,7 +91,7 @@ class BuildGenerationRequest implements BatchRequestBuilder
             ],
             prompt: $brief,
             maxTokens: $this->maxTokens,
-            schema: $this->schema->for($ids),
+            schema: $this->schema->for($ids, $cv->presentation),
         );
     }
 }

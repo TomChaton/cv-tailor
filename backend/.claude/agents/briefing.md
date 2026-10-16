@@ -127,9 +127,10 @@ only the presentation policy derived from it is of any use downstream.
 ### Presentation policy
 
 Generation and rendering need settings the CV's facts do not hold: target
-length, default role modes, which headline titles are on offer, which contact
-fields the CV's header carries, and whether awards and interests are shown.
-These live in the CV's front matter so each user's policy travels with their CV.
+length, how many skills the CV leads with, default role modes, which headline
+titles are on offer, which contact fields the CV's header carries, and whether
+awards and interests are shown. These live in the CV's front matter so each
+user's policy travels with their CV.
 
 **The policy is optional, and absent is the normal case**, so the defaults are
 the ordinary path rather than a fallback and their absence is never a lint
@@ -157,6 +158,19 @@ headings are, so a policy naming `LinkedIn` finds a field written `LinkedIn
 profile`. A named field the CV does not have is **skipped rather than
 reported**: the policy is a preference about a header, and a CV with no phone
 number is a fact about its author rather than a defect in the file.
+
+**`max_key_skills` caps the key skills list, and defaults to twelve.** A list
+running to most of the skills index is not a selection, and it is the first
+thing on the page after the summary. How many skills a CV leads with is a fact
+about that CV rather than about the installation, so it is the author's to set
+and it lives in the document beside the target length rather than in
+configuration. The default is a sensible number rather than a considered one —
+a CV that says nothing has to keep working, and the author changes it. A value
+that is not a positive integer reads as having said nothing at all, the same
+refusal the policy's other fields give an unusable value, and so is not a lint
+problem. A cap larger than the skills index is not an error either: it is no
+cap in practice, and a CV with eight skills in it cannot be made to name
+twelve. The cap is enforced by the output schema — see below for why there.
 
 **`include_awards` and `include_interests` switch those sections, and both
 default to on.** The output schema has no field for either, so the model cannot
@@ -767,7 +781,16 @@ everything else.**
 - **`headline`** — one of the CV's headline titles.
 - **`summary`** — text plus `supports`, the IDs it draws on. The riskiest
   field, so it is validated most strictly.
-- **`key_skills`** — skill IDs, not free text.
+- **`key_skills`** — skill IDs, not free text, and no more of them than the
+  presentation policy's cap. **The cap is `maxItems` on the schema**, not an
+  instruction in the prompt and not a validator: a cap is a restriction, and
+  the grammar the provider compiles makes a restriction impossible rather than
+  detectable. An instruction can be talked out of, and a validator would
+  reject a generation already paid for over a length the schema could have
+  prevented. Which skills are named is still the prompt's work — the schema
+  stops a long list, the prompt is what makes a short one the right short one.
+  `prompt.built` reports the cap a request was built with as
+  `key_skills_cap`.
 - **`roles`** — per role: `mode` (`full` / `condensed` / `omitted`) and the
   selected items in the order to show them. Each item is an ID with `text`
   either `null` (use the source verbatim — the normal case) or a rewording

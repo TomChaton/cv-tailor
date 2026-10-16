@@ -52,10 +52,16 @@ final readonly class GenerationEvents
     /**
      * The sizes are the point. A master CV that arrives truncated is invisible
      * in the output and obvious here.
+     *
+     * The key skills cap is a fact about the request rather than a thing that
+     * happened, so it rides here instead of on an event of its own: a
+     * revision that came back naming more skills than the CV should lead with
+     * is then answerable from the log rather than by rebuilding the schema.
      */
     public function promptBuilt(
         Revision $revision,
         int $enumCount,
+        int $keySkillsCap,
         int $instructionsChars,
         int $masterCvChars,
         int $briefChars,
@@ -66,6 +72,7 @@ final readonly class GenerationEvents
             'master_cv_version_id' => $revision->master_cv_version_id,
             'prompt_version' => PromptVersion::CURRENT,
             'enum_count' => $enumCount,
+            'key_skills_cap' => $keySkillsCap,
             'instructions_chars' => $instructionsChars,
             'master_cv_chars' => $masterCvChars,
             'brief_chars' => $briefChars,

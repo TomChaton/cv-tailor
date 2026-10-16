@@ -6,6 +6,7 @@ use App\Generation\OutputSchema;
 use App\Generation\RequirementPriority;
 use App\Generation\RequirementStatus;
 use App\Generation\SelectableIds;
+use App\MasterCv\PresentationPolicy;
 use App\MasterCv\RoleMode;
 use PHPUnit\Framework\TestCase;
 use Tests\Concerns\MasterCvFixtures;
@@ -67,7 +68,7 @@ class OutputSchemaTest extends TestCase
 
         $this->assertGreaterThan(300, count($ids->all));
 
-        $schema = (new OutputSchema)->for($ids);
+        $schema = (new OutputSchema)->for($ids, new PresentationPolicy);
 
         foreach ($this->enums($schema) as $path => $values) {
             $this->assertNotSame($ids->all, $values, $path);
@@ -114,6 +115,53 @@ class OutputSchemaTest extends TestCase
             ['$ref' => '#/$defs/role_or_project_id'],
             $this->subArray($this->defs(), 'promotion', 'properties', 'id'),
         );
+    }
+
+    /**
+     * A key skills list running to most of the index is not a selection, and
+     * the cap is a restriction, so the grammar the provider compiles makes a
+     * longer list impossible rather than detectable. An instruction can be
+     * talked out of, and a validator would reject a generation already paid
+     * for.
+     */
+    public function test_the_key_skills_list_is_capped_by_the_schema(): void
+    {
+        $schema = $this->cappedAt(5);
+
+        $this->assertSame(5, $schema['maxItems'] ?? null);
+        $this->assertSame(['$ref' => '#/$defs/skill_id'], $schema['items'] ?? null);
+    }
+
+    public function test_a_cv_that_names_no_cap_gets_the_default(): void
+    {
+        $this->assertSame(
+            PresentationPolicy::DEFAULT_MAX_KEY_SKILLS,
+            $this->subArray($this->properties(), 'key_skills')['maxItems'] ?? null,
+        );
+    }
+
+    /**
+     * No cap in practice, and not an error: a CV with eight skills in it
+     * cannot be made to name twelve.
+     */
+    public function test_a_cap_larger_than_the_index_is_accepted(): void
+    {
+        $beyond = count(SelectableIds::from($this->parseFixture())->skills) + 1;
+
+        $this->assertSame($beyond, $this->cappedAt($beyond)['maxItems'] ?? null);
+    }
+
+    /**
+     * Nothing else the model returns is a selection of a fixed size, so
+     * nothing else is capped: a role list the schema cut short would hide a
+     * role the author wanted shown.
+     */
+    public function test_nothing_else_the_model_returns_is_capped(): void
+    {
+        $encoded = json_encode($this->schema(), JSON_THROW_ON_ERROR);
+
+        $this->assertIsString($encoded);
+        $this->assertSame(1, substr_count($encoded, '"maxItems"'));
     }
 
     /**
@@ -321,7 +369,10 @@ class OutputSchemaTest extends TestCase
      */
     private function schema(): array
     {
-        return (new OutputSchema)->for(SelectableIds::from($this->parseFixture()));
+        return (new OutputSchema)->for(
+            SelectableIds::from($this->parseFixture()),
+            new PresentationPolicy,
+        );
     }
 
     /**
@@ -338,6 +389,22 @@ class OutputSchemaTest extends TestCase
     private function properties(): array
     {
         return $this->subArray($this->schema(), 'properties');
+    }
+
+    /**
+     * The `key_skills` property of a schema built for a CV whose policy names
+     * this cap.
+     *
+     * @return array<array-key, mixed>
+     */
+    private function cappedAt(int $cap): array
+    {
+        $schema = (new OutputSchema)->for(
+            SelectableIds::from($this->parseFixture()),
+            new PresentationPolicy(maxKeySkills: $cap),
+        );
+
+        return $this->subArray($schema, 'properties', 'key_skills');
     }
 
     /**
