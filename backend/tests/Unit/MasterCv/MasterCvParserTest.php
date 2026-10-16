@@ -4,6 +4,7 @@ namespace Tests\Unit\MasterCv;
 
 use App\MasterCv\Achievement;
 use App\MasterCv\ContentMarker;
+use App\MasterCv\PresentationPolicy;
 use App\MasterCv\Role;
 use App\MasterCv\RoleKind;
 use App\MasterCv\RoleMode;
@@ -54,6 +55,28 @@ class MasterCvParserTest extends TestCase
         $this->assertFalse($policy->includeInterests);
     }
 
+    public function test_it_reads_the_key_skills_cap_from_the_front_matter(): void
+    {
+        $this->assertSame(5, $this->policy('max_key_skills: 5')->maxKeySkills);
+    }
+
+    /**
+     * A count, which these are not. A value that is not one reads as having
+     * said nothing at all, which is the same refusal the policy's other
+     * fields give an unusable value: the default stands, and nothing about it
+     * is a lint problem.
+     */
+    public function test_a_key_skills_cap_that_is_not_a_count_is_refused_for_the_default(): void
+    {
+        foreach (['0', '-3', 'twelve', 'true', '2.5', ''] as $written) {
+            $this->assertSame(
+                PresentationPolicy::DEFAULT_MAX_KEY_SKILLS,
+                $this->policy('max_key_skills: '.$written)->maxKeySkills,
+                $written,
+            );
+        }
+    }
+
     public function test_a_front_matter_without_a_policy_gets_working_defaults(): void
     {
         $cv = $this->parseFixture('master-cv/minimal.md');
@@ -68,6 +91,10 @@ class MasterCvParserTest extends TestCase
         $this->assertSame(
             ['Location', 'Phone', 'Email', 'LinkedIn'],
             $cv->presentation->contactFields,
+        );
+        $this->assertSame(
+            PresentationPolicy::DEFAULT_MAX_KEY_SKILLS,
+            $cv->presentation->maxKeySkills,
         );
         // A section the author wrote is shown unless they say otherwise.
         $this->assertTrue($cv->presentation->includeAwards);
@@ -511,6 +538,24 @@ class MasterCvParserTest extends TestCase
         $this->assertGreaterThan(1, $headings, 'the fixture has no "'.$section.'" section');
 
         return $headings;
+    }
+
+    /**
+     * The policy of a CV whose front matter carries one extra line, so that
+     * the key under test is read out of a document rather than handed to the
+     * policy directly.
+     */
+    private function policy(string $line): PresentationPolicy
+    {
+        $content = str_replace(
+            "presentation:\n",
+            "presentation:\n  ".$line."\n",
+            $this->fixture(),
+        );
+
+        $this->assertNotSame($this->fixture(), $content);
+
+        return $this->parser()->parse($content)->presentation;
     }
 
     private function role(string $id, string $fixture = 'master-cv.md'): Role
