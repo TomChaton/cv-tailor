@@ -101,6 +101,48 @@ class WhereUsedChoicesTest extends TestCase
     }
 
     /**
+     * A row whose author is correcting part of it names things that do exist
+     * beside the ones that do not, and those are what the modal opens with.
+     * Saved back untouched, the only thing a rewrite could change is the
+     * author's own wording of a part that was never wrong.
+     */
+    public function test_a_selection_the_cell_already_names_says_nothing_new(): void
+    {
+        $choices = WhereUsedChoices::of($this->parseFixture());
+        $cell = 'Harlequin Transit (legacy, upgraded), Pentland Haulage, Northgate Tickets';
+
+        $this->assertTrue($choices->alreadySays($cell, ['harlequin-transit', 'northgate-tickets']));
+        $this->assertTrue($choices->alreadySays($cell, ['northgate-tickets', 'harlequin-transit']));
+    }
+
+    public function test_a_selection_that_adds_or_drops_a_role_says_something_new(): void
+    {
+        $choices = WhereUsedChoices::of($this->parseFixture());
+        $cell = 'Harlequin Transit (legacy, upgraded), Pentland Haulage, Northgate Tickets';
+
+        $this->assertFalse($choices->alreadySays($cell, ['harlequin-transit']));
+        $this->assertFalse($choices->alreadySays($cell, [
+            'harlequin-transit',
+            'northgate-tickets',
+            'larkspur-media',
+        ]));
+    }
+
+    /**
+     * Choosing nothing is an answer rather than the absence of one: a cell
+     * with words in it does not already say that the row claims no evidence,
+     * however little of what it says resolves.
+     */
+    public function test_choosing_nothing_says_something_new_unless_the_cell_is_already_empty(): void
+    {
+        $choices = WhereUsedChoices::of($this->parseFixture());
+
+        $this->assertFalse($choices->alreadySays('Pentland Haulage', []));
+        $this->assertTrue($choices->alreadySays(null, []));
+        $this->assertTrue($choices->alreadySays('  ', []));
+    }
+
+    /**
      * A CV missing an ID has a problem of its own, and a fix for one row has
      * no business refusing to work until that one is dealt with.
      */

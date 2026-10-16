@@ -1619,11 +1619,20 @@ lint finding against it.
 - **The problems sit beside the editor, each with its line number.** The loop
   that matters is seeing a problem and fixing it, and a loop that leaves the
   page is a loop nobody closes.
-- **A finding is a control, and activating it selects the line it names.**
-  Notes as well as problems: one fails the CV and the other does not, and
-  neither fact has anything to do with finding the line. A finding that names
-  no line stays a sentence, because a control that did nothing when it was
-  pressed would be worse than no control at all.
+- **A control on this page is a button, and a finding's own text is not a
+  control.** The finding is the sentence that says what is wrong, and prose is
+  how it is read; a control drawn as prose is one nobody presses, and two of
+  them side by side read as one sentence rather than as two things that can be
+  pressed. So the sentence stays text and takes the width it needs, and what
+  can be done about it sits under it as buttons — never as a label that
+  swallows the sentence and hides it.
+- **The line a finding names is the label of the button that selects it.** The
+  number was only ever being read in order to find the line, so pressing it is
+  the whole of what it was for, and the page says the line once. Notes as well
+  as problems: one fails the CV and the other does not, and neither fact has
+  anything to do with finding the line. A finding that names no line carries
+  no button, because a control that did nothing when it was pressed would be
+  worse than no control at all.
 - **The editor has no gutter of line numbers, and should not grow one.** A
   master CV holds lines long enough to wrap, and a column of numbers beside
   wrapped text stops agreeing with it at the first one that does. Selecting
@@ -1667,7 +1676,7 @@ lint finding against it.
 
 ### A guided fix
 
-Some problems have a closed set of right answers, and where they do the page
+Some findings have a closed set of right answers, and where they do the page
 can offer them rather than describe the problem and leave. A skills-index
 row's "Where used" is the first: the cell may only name roles and projects, and
 the document says which exist.
@@ -1702,8 +1711,35 @@ the document says which exist.
   because a row claiming no evidence has none to check — see Linting. An
   emptied cell is therefore quieter than a wrong one, which is the trade the
   format already makes for every list-form row that names nowhere.
-- **Only a problem that names this remedy carries the control.** A problem with
-  no fix this page can make shows nothing suggesting otherwise.
+- **A note carries the fix as readily as a problem does.** A row whose "Where
+  used" names nothing in the document is a problem; one that names several
+  things where only some exist is a note, and that is the same mistake with a
+  sibling that happened to match. The question the fix asks — which of this
+  document's roles and projects does this row name — is the same question at
+  either level, and the answer is written the same way. Whether a finding fails
+  the CV has nothing to do with whether the row can be corrected, and a skills
+  index of any size raises more of the second kind than the first.
+- **A note's existing matches are pre-selected, and a selection nobody changed
+  writes nothing.** The row already names things that exist and the owner is
+  correcting the rest, so the modal opens on what lint counts as resolved. Were
+  it then written back, the only thing that could change is the author's own
+  wording of a part that was never wrong — `Harlequin Transit (legacy,
+  upgraded)` becoming `Harlequin Transit`, because a choice writes the text it
+  is labelled with. That is harm the finding never asked for, so the rewrite is
+  not made at all. Choosing nothing is the exception and is always written: a
+  cell with words in it does not already say that the row claims no evidence,
+  however little of what it says resolves.
+- **A finding naming no remedy this page can offer carries no control.** A
+  finding this page cannot act on must not suggest otherwise.
+- **The fix is offered once for a row, on the first of its findings.** A cell
+  naming several things the document does not hold raises one finding per part,
+  and each is worth reading because each names a different missing part. The
+  fix is not, because it rewrites the whole cell: a second button beside the
+  first opens the same question and writes the same answer. So the findings
+  stay as they are, each selecting its line, and only the control is collapsed.
+- **The line that records a fix carries the finding's level**, so one applied to
+  a note is distinguishable from one applied to a problem. Counts and outcomes
+  only: never the row, the names chosen, or anything else the document says.
 
 ## Observability
 
@@ -1881,6 +1917,11 @@ goes where it is told, which has to be somewhere writable, and
   records the reported one once there is output, and a log line names each
   separately. A single `model` key is how a cost comes to be computed from a
   name nothing was ever configured under.
+- **A log line owns `time`, `level`, `event`, `message` and `channel`**, and a
+  context key claiming one of those names is dropped rather than merged — the
+  line's own severity is not something a caller may overwrite. A line with a
+  severity of its own to report, such as the level of the finding it answered,
+  names the key for the thing it describes.
 - **The test suite supplies its own environment** and is handed no `.env`, so a
   result never depends on how a particular machine is configured. Test values
   belong in `phpunit.xml`.

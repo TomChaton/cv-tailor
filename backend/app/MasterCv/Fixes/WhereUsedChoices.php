@@ -80,6 +80,32 @@ final readonly class WhereUsedChoices
     }
 
     /**
+     * Whether a cell already says what these keys say.
+     *
+     * A row whose author is correcting part of it names things that do exist
+     * alongside the ones that do not, and those are pre-selected. Saved back
+     * untouched, the only thing a rewrite could change is the author's own
+     * wording of a part that was never wrong — `Harlequin Transit (legacy,
+     * upgraded)` for `Harlequin Transit` — so it is not made.
+     *
+     * Choosing nothing is the exception, because it is an answer rather than
+     * the absence of one: a cell with words in it does not already say that
+     * the row claims no evidence, however little of what it says resolves.
+     *
+     * @param  list<string>  $keys
+     */
+    public function alreadySays(?string $whereUsed, array $keys): bool
+    {
+        $keys = $this->inOrder($keys);
+
+        if ($keys === []) {
+            return trim((string) $whereUsed) === '';
+        }
+
+        return $this->selected($whereUsed) === $keys;
+    }
+
+    /**
      * The cell these choices write.
      *
      * A key that names no choice is dropped rather than written: the set on
