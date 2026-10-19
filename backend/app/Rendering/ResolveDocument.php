@@ -48,6 +48,7 @@ final class ResolveDocument
             header: $this->header($cv, $selection),
             summary: $selection->summary?->text,
             skills: $this->skills($cv, $selection),
+            skillsNamed: count($selection->keySkills),
             roles: $roles,
             independentProjects: $projects,
             awards: $cv->presentation->includeAwards ? $cv->awards : [],
@@ -97,6 +98,21 @@ final class ResolveDocument
     }
 
     /**
+     * The skills to lead with, deduplicated and capped.
+     *
+     * **The cap is applied here, not by the schema and not by a validator.**
+     * The provider does not support `maxItems` on an array, so a list's length
+     * cannot be constrained on the way out; and a validator would block a
+     * revision that is otherwise sound over a decision about a page. How many
+     * skills a CV leads with is presentation, which this step already owns.
+     *
+     * The model's own order is kept, because that order is its judgement of
+     * relevance, and trimming only ever removes: what survives was chosen from
+     * the master CV and has already been validated, so nothing can be
+     * fabricated here. A duplicate goes the same way, on its first occurrence
+     * — `uniqueItems` is the same family of keyword as `maxItems` and is to be
+     * assumed unsupported too.
+     *
      * @return list<ResolvedSkill>
      */
     private function skills(ParsedMasterCv $cv, Selection $selection): array
@@ -121,6 +137,10 @@ final class ResolveDocument
 
             $seen[$reference->id] = true;
             $skills[] = new ResolvedSkill($skill->id, $skill->name);
+
+            if (count($skills) === $cv->presentation->maxKeySkills) {
+                break;
+            }
         }
 
         return $skills;

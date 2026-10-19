@@ -170,7 +170,8 @@ that is not a positive integer reads as having said nothing at all, the same
 refusal the policy's other fields give an unusable value, and so is not a lint
 problem. A cap larger than the skills index is not an error either: it is no
 cap in practice, and a CV with eight skills in it cannot be made to name
-twelve. The cap is enforced by the output schema — see below for why there.
+twelve. The cap is applied at resolve time — see the output schema for why it
+cannot be applied where it would be stronger.
 
 **`include_awards` and `include_interests` switch those sections, and both
 default to on.** The output schema has no field for either, so the model cannot
@@ -781,16 +782,22 @@ everything else.**
 - **`headline`** — one of the CV's headline titles.
 - **`summary`** — text plus `supports`, the IDs it draws on. The riskiest
   field, so it is validated most strictly.
-- **`key_skills`** — skill IDs, not free text, and no more of them than the
-  presentation policy's cap. **The cap is `maxItems` on the schema**, not an
-  instruction in the prompt and not a validator: a cap is a restriction, and
-  the grammar the provider compiles makes a restriction impossible rather than
-  detectable. An instruction can be talked out of, and a validator would
-  reject a generation already paid for over a length the schema could have
-  prevented. Which skills are named is still the prompt's work — the schema
-  stops a long list, the prompt is what makes a short one the right short one.
-  `prompt.built` reports the cap a request was built with as
-  `key_skills_cap`.
+- **`key_skills`** — skill IDs, not free text, in the order the model judges
+  most relevant. **Nothing in the schema says how many.** The provider does not
+  support `maxItems` on an array and refuses the whole schema over it, so a
+  list's length cannot be constrained there at all. The presentation policy's
+  cap is therefore applied at resolve time, where the code already owns what
+  the page shows, and the prompt states it because the schema cannot: a model
+  that names twelve deliberately chooses a better twelve than one that names
+  forty and has twenty-eight trimmed off the end. `prompt.built` reports the
+  cap a request was built with as `key_skills_cap`.
+
+  **Keep the distinction sharp, because it is the attractive half of the
+  original reasoning and it still holds.** An *enum* makes an invalid value
+  impossible rather than detectable, which is why the ID enums are worth their
+  budget. A *length* cannot be constrained at all, so a count is never asked of
+  the schema and never will be. The two are not the same kind of restriction,
+  and only one of them is on offer.
 - **`roles`** — per role: `mode` (`full` / `condensed` / `omitted`) and the
   selected items in the order to show them. Each item is an ID with `text`
   either `null` (use the source verbatim — the normal case) or a rewording
@@ -1391,6 +1398,18 @@ is read from the parse.
 - **An item the role does not own, or one the author marked `TODO`, is dropped
   rather than printed.** Validation blocks a revision that asks for either; a
   renderer that printed it anyway would be a second route onto the page.
+- **How many skills the CV leads with is the policy's, and the trim happens
+  here.** A key skills list longer than `max_key_skills` is cut to it in the
+  model's own order, because that order is its judgement of relevance, and a
+  skill named twice is kept on its first occurrence. Neither is a validation
+  finding: a count is a decision about a page rather than a claim about a
+  fact, and blocking an otherwise sound revision over one would throw away a
+  generation already paid for. Trimming is also the one operation that cannot
+  fabricate — it only removes, and what survives was selected from the master
+  CV and has already been validated. `revision.resolved` carries
+  `skills_named` beside `skills_kept`, so a CV that named forty and shows
+  twelve is answerable; a wide gap says the prompt is not landing rather than
+  that the cap is wrong.
 
 ### "Do not elaborate" is honoured at resolve time
 
@@ -1968,6 +1987,16 @@ goes where it is told, which has to be somewhere writable, and
   line's own severity is not something a caller may overwrite. A line with a
   severity of its own to report, such as the level of the finding it answered,
   names the key for the thing it describes.
+- **A schema keyword is not supported because it is valid JSON Schema.** The
+  provider compiles a subset into a grammar and refuses the whole schema over a
+  keyword outside it — `maxItems` on an array is refused, and `uniqueItems` is
+  the same family and is to be assumed refused until a submission says
+  otherwise. The fake client cannot tell you which subset it is: it answers
+  about the shape of a request, and only the provider answers about what it
+  will compile. So a green suite is no evidence at all here, and **any change
+  to the output schema's shape needs one real submission behind it before it is
+  merged.** The cost of skipping that is total — every request refused and
+  nothing generated — and it is invisible until an instance tries.
 - **A fixture small enough to pass every test can be too small to exercise a
   limit the provider applies.** The output schema is built per master CV
   version, so its size is the CV's size: the fictional fixture most tests use

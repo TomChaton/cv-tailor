@@ -230,6 +230,8 @@ class RenderRevisionTest extends TestCase
             ->with('revision.resolved', Mockery::on(function (array $context) use ($revision): bool {
                 $this->assertSame($revision->id, $context['revision_id']);
                 $this->assertSame($revision->master_cv_version_id, $context['master_cv_version_id']);
+                $this->assertSame(3, $context['skills_named']);
+                $this->assertSame(3, $context['skills_kept']);
                 $this->assertSame(5, $context['roles_included']);
                 $this->assertSame(1, $context['roles_condensed']);
                 $this->assertSame(1, $context['roles_omitted']);

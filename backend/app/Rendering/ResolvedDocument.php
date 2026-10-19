@@ -22,6 +22,12 @@ final readonly class ResolvedDocument
      * @param  list<ResolvedRole>  $independentProjects
      * @param  list<string>  $awards
      * @param  list<string>  $interests
+     * @param  int  $skillsNamed  How many skills the selection named, before
+     *                            anything was taken off it. Not part of the
+     *                            document, for the same reason as
+     *                            `$rolesOmitted`: a cap doing a lot of work
+     *                            says the prompt is not landing, and that is
+     *                            only visible as the two numbers side by side.
      * @param  int  $rolesOmitted  Roles and projects the master CV version
      *                             holds that this document does not show. Not
      *                             part of the document: it is how a resolver
@@ -31,6 +37,7 @@ final readonly class ResolvedDocument
         public ResolvedHeader $header,
         public ?string $summary,
         public array $skills,
+        public int $skillsNamed,
         public array $roles,
         public array $independentProjects,
         public array $awards,
@@ -55,6 +62,11 @@ final readonly class ResolvedDocument
      * project in the master CV version; `roles_condensed` says how many of the
      * included ones are shown in less than full detail.
      *
+     * `skills_named` against `skills_kept` is how a CV that named forty skills
+     * and shows twelve is answerable. The gap is what the cap, a duplicate and
+     * an ID that did not resolve took off between them, and a wide one is a
+     * sign the prompt is not landing rather than a sign the cap is wrong.
+     *
      * @return array<string, int>
      */
     public function counts(): array
@@ -78,6 +90,8 @@ final readonly class ResolvedDocument
         }
 
         return [
+            'skills_named' => $this->skillsNamed,
+            'skills_kept' => count($this->skills),
             'roles_included' => count($this->allRoles()),
             'roles_condensed' => $condensed,
             'roles_omitted' => $this->rolesOmitted,

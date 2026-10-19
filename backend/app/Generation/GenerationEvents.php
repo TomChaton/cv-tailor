@@ -54,9 +54,11 @@ final readonly class GenerationEvents
      * in the output and obvious here.
      *
      * The key skills cap is a fact about the request rather than a thing that
-     * happened, so it rides here instead of on an event of its own: a
-     * revision that came back naming more skills than the CV should lead with
-     * is then answerable from the log rather than by rebuilding the schema.
+     * happened, so it rides here instead of on an event of its own. It is the
+     * cap the request was built with, which `revision.resolved` is then the
+     * other half of: this line says what the model was asked for and that one
+     * says what the trim left, and a revision leading with fewer skills than
+     * expected is answerable from the two without reparsing the CV.
      */
     public function promptBuilt(
         Revision $revision,

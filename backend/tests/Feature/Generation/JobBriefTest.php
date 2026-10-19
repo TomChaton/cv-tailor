@@ -103,6 +103,28 @@ class JobBriefTest extends TestCase
         $this->assertStringContainsString('A target, not a limit.', $text);
     }
 
+    /**
+     * The schema cannot express a length, so the instruction is the only thing
+     * that makes the skills the trim keeps the right ones.
+     */
+    public function test_the_brief_states_the_key_skills_cap(): void
+    {
+        $text = $this->brief($this->posting(), new PresentationPolicy(maxKeySkills: 7));
+
+        $this->assertStringContainsString('Key skills: at most 7', $text);
+        $this->assertStringContainsString('most relevant to this job first', $text);
+    }
+
+    public function test_the_brief_states_the_default_cap_when_the_policy_names_none(): void
+    {
+        $text = $this->brief($this->posting(), new PresentationPolicy);
+
+        $this->assertStringContainsString(
+            'Key skills: at most '.PresentationPolicy::DEFAULT_MAX_KEY_SKILLS,
+            $text,
+        );
+    }
+
     public function test_it_says_every_role_is_full_when_the_policy_sets_no_cutoffs(): void
     {
         $text = $this->brief($this->posting(), new PresentationPolicy);

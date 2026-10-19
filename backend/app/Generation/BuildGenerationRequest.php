@@ -91,7 +91,7 @@ class BuildGenerationRequest implements BatchRequestBuilder
             ],
             prompt: $brief,
             maxTokens: $this->maxTokens,
-            schema: $this->schema->for($ids, $cv->presentation),
+            schema: $this->schema->for($ids),
         );
     }
 }

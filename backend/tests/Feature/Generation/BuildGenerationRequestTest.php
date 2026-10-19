@@ -78,21 +78,33 @@ class BuildGenerationRequestTest extends TestCase
     }
 
     /**
+     * The provider refuses a schema carrying `maxItems`, so a cap the CV names
+     * reaches the request as an instruction and never as a schema keyword.
+     */
+    public function test_a_cv_that_names_a_cap_still_gets_a_schema_without_one(): void
+    {
+        $keySkills = $this->keySkills($this->build($this->revisionFrom($this->fixtureCapping(5))));
+
+        $this->assertSame(['type', 'description', 'items'], array_keys($keySkills));
+        $this->assertSame('array', $keySkills['type']);
+    }
+
+    /**
      * The cap travels in the document, so it is read out of one here rather
-     * than handed to the schema by a policy nothing wrote.
+     * than handed to the request by a policy nothing wrote.
      */
     public function test_the_key_skills_cap_comes_from_the_cvs_front_matter(): void
     {
-        $revision = $this->revisionFrom($this->fixtureCapping(5));
+        $request = $this->build($this->revisionFrom($this->fixtureCapping(5)));
 
-        $this->assertSame(5, $this->keySkills($this->build($revision)));
+        $this->assertStringContainsString('Key skills: at most 5', $request->prompt);
     }
 
-    public function test_a_cv_that_names_no_cap_is_capped_at_the_default(): void
+    public function test_a_cv_that_names_no_cap_is_told_the_default(): void
     {
-        $this->assertSame(
-            PresentationPolicy::DEFAULT_MAX_KEY_SKILLS,
-            $this->keySkills($this->build($this->revision())),
+        $this->assertStringContainsString(
+            'Key skills: at most '.PresentationPolicy::DEFAULT_MAX_KEY_SKILLS,
+            $this->build($this->revision())->prompt,
         );
     }
 
@@ -274,9 +286,11 @@ class BuildGenerationRequestTest extends TestCase
     }
 
     /**
-     * The cap the built request puts on the key skills list.
+     * The `key_skills` node of the schema the built request carries.
+     *
+     * @return array<string, mixed>
      */
-    private function keySkills(LlmRequest $request): int
+    private function keySkills(LlmRequest $request): array
     {
         $schema = $request->schema;
         $this->assertIsArray($schema);
@@ -287,10 +301,8 @@ class BuildGenerationRequestTest extends TestCase
         $keySkills = $properties['key_skills'] ?? null;
         $this->assertIsArray($keySkills);
 
-        $cap = $keySkills['maxItems'] ?? null;
-        $this->assertIsInt($cap);
-
-        return $cap;
+        /** @var array<string, mixed> $keySkills */
+        return $keySkills;
     }
 
     private function build(Revision $revision): LlmRequest

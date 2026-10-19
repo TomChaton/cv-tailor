@@ -2,7 +2,6 @@
 
 namespace App\Generation;
 
-use App\MasterCv\PresentationPolicy;
 use App\MasterCv\RoleMode;
 
 /**
@@ -33,13 +32,24 @@ use App\MasterCv\RoleMode;
  * too complex to compile**, so the total number of enum values is a budget
  * rather than a free choice. `prompt.built` reports it as `enum_count`.
  *
- * **`key_skills` is capped here, by `maxItems`**, and the cap comes from the
- * presentation policy. A cap is a restriction, and the grammar makes a
- * restriction impossible rather than detectable: an instruction to name a
- * handful can be talked out of, and a validator would reject a generation
- * already paid for over a length the schema could have prevented. Which
- * skills are named is still the prompt's work — the schema stops a long list,
- * the prompt is what makes a short one the right short one.
+ * **Nothing here constrains how long a list is.** The provider does not
+ * support `maxItems` on an array, and refuses the whole schema over it, so
+ * `key_skills` carries no cap: the cap is the presentation policy's and is
+ * applied at resolve time, where the code already owns what the page shows.
+ * The prompt states it, because the schema cannot, and the instruction is then
+ * what makes the skills that survive the right ones. `prompt.built` reports
+ * the cap a request was built with as `key_skills_cap`.
+ *
+ * Keep the distinction sharp: an **enum** makes an invalid value impossible,
+ * and a **length** cannot be constrained at all. The first is why the ID enums
+ * are worth their budget; the second is why a count is never asked of the
+ * schema.
+ *
+ * **A keyword is supported because the provider has compiled it, not because
+ * it is valid JSON Schema.** The keywords below are the ones a real submission
+ * has been accepted with. `uniqueItems` is the same family as `maxItems` and
+ * is to be assumed unsupported; duplicates are dropped at resolve time
+ * instead.
  *
  * **Evidence takes a plain string, not an enum.** The fields that cite why
  * something was chosen — `summary.supports`, a selected item's `supports`, a
@@ -85,7 +95,7 @@ final readonly class OutputSchema
     /**
      * @return array<string, mixed>
      */
-    public function for(SelectableIds $ids, PresentationPolicy $policy): array
+    public function for(SelectableIds $ids): array
     {
         return [
             'type' => 'object',
@@ -117,11 +127,7 @@ final readonly class OutputSchema
                 ],
                 'key_skills' => self::listOf(
                     self::SKILL_ID,
-                    'Rows of the skills index. Never free text.',
-                    // A cap larger than the index is not an error: it is no
-                    // cap in practice, and a CV with eight skills in it
-                    // cannot be made to name twelve.
-                    maxItems: $policy->maxKeySkills,
+                    'Rows of the skills index, most relevant first. Never free text.',
                 ),
                 'roles' => [
                     'type' => 'array',
@@ -252,15 +258,13 @@ final readonly class OutputSchema
     /**
      * @return array<string, mixed>
      */
-    private static function listOf(string $reference, string $description, ?int $maxItems = null): array
+    private static function listOf(string $reference, string $description): array
     {
-        $list = [
+        return [
             'type' => 'array',
             'description' => $description,
             'items' => ['$ref' => $reference],
         ];
-
-        return $maxItems === null ? $list : [...$list, 'maxItems' => $maxItems];
     }
 
     /**
