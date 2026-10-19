@@ -88,6 +88,17 @@ final readonly class JobBrief
             WordBudget::forPages($policy->targetPages),
         )];
 
+        // The schema cannot express a length, so the cap is said here. The
+        // code trims a longer list at resolve time, which is why the
+        // instruction matters: a list the model chose to keep short is a
+        // better twelve than the first twelve of forty.
+        $lines[] = sprintf(
+            '- Key skills: at most %d, most relevant to this job first. Name fewer where fewer'
+                .' earn it; anything past the %dth is dropped and never reaches the page.',
+            $policy->maxKeySkills,
+            $policy->maxKeySkills,
+        );
+
         $lines[] = $policy->condenseRolesEndingBefore === null && $policy->omitRolesEndingBefore === null
             ? "- Every role's default mode is `full`."
             : "- Each role's `default_mode` in the master CV already accounts for its dates.";

@@ -13,5 +13,5 @@ namespace App\Generation;
  */
 final class PromptVersion
 {
-    public const CURRENT = 'g3';
+    public const CURRENT = 'g4';
 }

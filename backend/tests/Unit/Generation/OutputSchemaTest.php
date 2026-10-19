@@ -6,7 +6,6 @@ use App\Generation\OutputSchema;
 use App\Generation\RequirementPriority;
 use App\Generation\RequirementStatus;
 use App\Generation\SelectableIds;
-use App\MasterCv\PresentationPolicy;
 use App\MasterCv\RoleMode;
 use PHPUnit\Framework\TestCase;
 use Tests\Concerns\MasterCvFixtures;
@@ -68,7 +67,7 @@ class OutputSchemaTest extends TestCase
 
         $this->assertGreaterThan(300, count($ids->all));
 
-        $schema = (new OutputSchema)->for($ids, new PresentationPolicy);
+        $schema = (new OutputSchema)->for($ids);
 
         foreach ($this->enums($schema) as $path => $values) {
             $this->assertNotSame($ids->all, $values, $path);
@@ -118,50 +117,41 @@ class OutputSchemaTest extends TestCase
     }
 
     /**
-     * A key skills list running to most of the index is not a selection, and
-     * the cap is a restriction, so the grammar the provider compiles makes a
-     * longer list impossible rather than detectable. An instruction can be
-     * talked out of, and a validator would reject a generation already paid
-     * for.
+     * The provider refuses a schema that constrains an array's length, so no
+     * list here is capped. How many skills a CV leads with is a presentation
+     * decision, made at resolve time where the code already owns what the page
+     * shows.
      */
-    public function test_the_key_skills_list_is_capped_by_the_schema(): void
-    {
-        $schema = $this->cappedAt(5);
-
-        $this->assertSame(5, $schema['maxItems'] ?? null);
-        $this->assertSame(['$ref' => '#/$defs/skill_id'], $schema['items'] ?? null);
-    }
-
-    public function test_a_cv_that_names_no_cap_gets_the_default(): void
+    public function test_no_list_is_capped(): void
     {
         $this->assertSame(
-            PresentationPolicy::DEFAULT_MAX_KEY_SKILLS,
-            $this->subArray($this->properties(), 'key_skills')['maxItems'] ?? null,
+            ['type', 'description', 'items'],
+            array_keys($this->subArray($this->properties(), 'key_skills')),
         );
-    }
 
-    /**
-     * No cap in practice, and not an error: a CV with eight skills in it
-     * cannot be made to name twelve.
-     */
-    public function test_a_cap_larger_than_the_index_is_accepted(): void
-    {
-        $beyond = count(SelectableIds::from($this->parseFixture())->skills) + 1;
-
-        $this->assertSame($beyond, $this->cappedAt($beyond)['maxItems'] ?? null);
-    }
-
-    /**
-     * Nothing else the model returns is a selection of a fixed size, so
-     * nothing else is capped: a role list the schema cut short would hide a
-     * role the author wanted shown.
-     */
-    public function test_nothing_else_the_model_returns_is_capped(): void
-    {
         $encoded = json_encode($this->schema(), JSON_THROW_ON_ERROR);
 
         $this->assertIsString($encoded);
-        $this->assertSame(1, substr_count($encoded, '"maxItems"'));
+        $this->assertStringNotContainsString('maxItems', $encoded);
+    }
+
+    /**
+     * A keyword is supported because the provider has compiled it, not because
+     * it is valid JSON Schema. These are the ones a real submission has been
+     * accepted with, and `uniqueItems` — the same family as `maxItems` — is
+     * deliberately not among them.
+     */
+    public function test_the_schema_uses_only_keywords_a_real_submission_has_been_accepted_with(): void
+    {
+        $accepted = [
+            '$defs', '$ref', 'additionalProperties', 'description', 'enum',
+            'items', 'properties', 'required', 'type',
+        ];
+
+        $used = $this->keywords($this->schema());
+
+        $this->assertNotSame([], $used);
+        $this->assertSame([], array_values(array_diff($used, $accepted)));
     }
 
     /**
@@ -369,10 +359,7 @@ class OutputSchemaTest extends TestCase
      */
     private function schema(): array
     {
-        return (new OutputSchema)->for(
-            SelectableIds::from($this->parseFixture()),
-            new PresentationPolicy,
-        );
+        return (new OutputSchema)->for(SelectableIds::from($this->parseFixture()));
     }
 
     /**
@@ -392,19 +379,52 @@ class OutputSchemaTest extends TestCase
     }
 
     /**
-     * The `key_skills` property of a schema built for a CV whose policy names
-     * this cap.
+     * Every JSON Schema keyword the schema uses, once, sorted.
      *
-     * @return array<array-key, mixed>
+     * @param  array<array-key, mixed>  $schema
+     * @return list<string>
      */
-    private function cappedAt(int $cap): array
+    private function keywords(array $schema): array
     {
-        $schema = (new OutputSchema)->for(
-            SelectableIds::from($this->parseFixture()),
-            new PresentationPolicy(maxKeySkills: $cap),
-        );
+        $keywords = array_values(array_unique($this->keysOf($schema)));
 
-        return $this->subArray($schema, 'properties', 'key_skills');
+        sort($keywords);
+
+        return $keywords;
+    }
+
+    /**
+     * The keys of every schema node, following only the values that are
+     * schemas themselves.
+     *
+     * The keys under `properties` and `$defs` are names this schema chose, and
+     * the entries of an `enum` or a `required` list are values rather than
+     * keywords, so none of those is walked into.
+     *
+     * @param  array<array-key, mixed>  $node
+     * @return list<string>
+     */
+    private function keysOf(array $node): array
+    {
+        $keys = [];
+
+        foreach ($node as $keyword => $value) {
+            $keys[] = (string) $keyword;
+
+            if (! is_array($value) || in_array($keyword, ['enum', 'required', 'type'], true)) {
+                continue;
+            }
+
+            $children = in_array($keyword, ['properties', '$defs'], true) ? $value : [$value];
+
+            foreach ($children as $child) {
+                if (is_array($child)) {
+                    $keys = [...$keys, ...$this->keysOf($child)];
+                }
+            }
+        }
+
+        return $keys;
     }
 
     /**

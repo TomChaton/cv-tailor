@@ -3,10 +3,12 @@
 namespace Tests\Unit\Rendering;
 
 use App\MasterCv\RoleMode;
+use App\MasterCv\Skill;
 use App\Rendering\ResolvedDocument;
 use App\Rendering\ResolvedItem;
 use App\Rendering\ResolveDocument;
 use App\Rendering\ResolvedRole;
+use App\Rendering\ResolvedSkill;
 use PHPUnit\Framework\TestCase;
 use Tests\Concerns\MasterCvFixtures;
 use Tests\Concerns\SelectionFixtures;
@@ -267,6 +269,67 @@ class ResolveDocumentTest extends TestCase
     }
 
     /**
+     * The cap cannot be put on the schema, so it is applied here: a list longer
+     * than the policy allows is cut to it in the model's own order, which is
+     * its judgement of relevance. Trimming only removes, so nothing it leaves
+     * behind was fabricated.
+     */
+    public function test_a_longer_key_skills_list_is_trimmed_to_the_cap(): void
+    {
+        $document = $this->resolveCappedAt(2, $this->selection());
+
+        $this->assertSame(
+            ['PHP 8.x (8.3)', 'PostgreSQL (13, 15)'],
+            $this->skillNames($document),
+        );
+        $this->assertSame(2, $document->counts()['skills_kept']);
+        $this->assertSame(3, $document->counts()['skills_named']);
+    }
+
+    public function test_a_key_skills_list_within_the_cap_is_unchanged(): void
+    {
+        $document = $this->resolveCappedAt(3, $this->selection());
+
+        $this->assertSame(
+            ['PHP 8.x (8.3)', 'PostgreSQL (13, 15)', 'Elasticsearch (7, 8)'],
+            $this->skillNames($document),
+        );
+    }
+
+    /**
+     * `uniqueItems` is the same family of keyword as `maxItems`, so duplicates
+     * are dropped here too, on the first occurrence.
+     */
+    public function test_a_skill_named_twice_appears_once(): void
+    {
+        $document = $this->resolve($this->selection(['key_skills' => [
+            Skill::idFor('PHP 8.x (8.3)'),
+            Skill::idFor('PostgreSQL (13, 15)'),
+            Skill::idFor('PHP 8.x (8.3)'),
+        ]]));
+
+        $this->assertSame(['PHP 8.x (8.3)', 'PostgreSQL (13, 15)'], $this->skillNames($document));
+        $this->assertSame(3, $document->counts()['skills_named']);
+        $this->assertSame(2, $document->counts()['skills_kept']);
+    }
+
+    /**
+     * A duplicate is not a free slot. The cap counts what reaches the page, so
+     * a list that names the same skill twice does not buy a third one.
+     */
+    public function test_a_duplicate_does_not_spend_a_slot_under_the_cap(): void
+    {
+        $document = $this->resolveCappedAt(2, $this->selection(['key_skills' => [
+            Skill::idFor('PHP 8.x (8.3)'),
+            Skill::idFor('PHP 8.x (8.3)'),
+            Skill::idFor('PostgreSQL (13, 15)'),
+            Skill::idFor('Elasticsearch (7, 8)'),
+        ]]));
+
+        $this->assertSame(['PHP 8.x (8.3)', 'PostgreSQL (13, 15)'], $this->skillNames($document));
+    }
+
+    /**
      * The output schema has no field for either, so the model never touches
      * them: the policy is the only thing that can drop one.
      */
@@ -297,6 +360,8 @@ class ResolveDocumentTest extends TestCase
         $counts = $this->resolve($this->selection())->counts();
 
         $this->assertSame([
+            'skills_named' => 3,
+            'skills_kept' => 3,
             'roles_included' => 5,
             'roles_condensed' => 1,
             'roles_omitted' => 1,
@@ -311,6 +376,37 @@ class ResolveDocumentTest extends TestCase
     private function resolve(array $output): ResolvedDocument
     {
         return (new ResolveDocument)->resolve($this->parseFixture(), $output);
+    }
+
+    /**
+     * The same resolution, against the fictional CV with one more line in its
+     * presentation policy. The cap travels in the document, so it is read out
+     * of one here rather than handed in by a policy nothing wrote.
+     *
+     * @param  array<string, mixed>  $output
+     */
+    private function resolveCappedAt(int $cap, array $output): ResolvedDocument
+    {
+        $markdown = str_replace(
+            "presentation:\n",
+            "presentation:\n  max_key_skills: ".$cap."\n",
+            $this->fixture(),
+        );
+
+        $this->assertNotSame($this->fixture(), $markdown);
+
+        return (new ResolveDocument)->resolve($this->parser()->parse($markdown), $output);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function skillNames(ResolvedDocument $document): array
+    {
+        return array_map(
+            static fn (ResolvedSkill $skill): string => $skill->name,
+            $document->skills,
+        );
     }
 
     private function resolvedRole(ResolvedDocument $document, string $id): ResolvedRole
