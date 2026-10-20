@@ -91,9 +91,10 @@ reached over Tailscale; nothing in the application depends on that.
   **FrankenPHP 1.13.1 on PHP 8.5.11** for the application image, and
   **`gotenberg/gotenberg:8`** (Chromium 152) for PDF conversion. A version is
   changed deliberately, with the new one checked on that host first.
-- **State lives in named volumes** — the SQLite database and generated PDFs —
-  never bind mounts. On macOS, bind mounts go through the Docker VM's file
-  sharing, which is slow and does not give SQLite reliable locking.
+- **State lives in named volumes** — the SQLite database and the files a
+  revision renders to — never bind mounts. On macOS, bind mounts go through the
+  Docker VM's file sharing, which is slow and does not give SQLite reliable
+  locking.
 - **The master CV is stored by the application, not mounted.** It is the one
   thing every user has to create and maintain, and as a file on the host it
   was the one thing the application could not help with: editing meant leaving
@@ -240,9 +241,9 @@ The only outbound network traffic is to the configured LLM provider's API.
 
 ## Backups
 
-The database and generated PDFs are backed up nightly by the scheduler: a
-consistent SQLite snapshot (`sqlite3 .backup`, never a file copy of a live
-database) plus the PDFs, written to a host directory configured by
+The database and a revision's rendered files are backed up nightly by the
+scheduler: a consistent SQLite snapshot (`sqlite3 .backup`, never a file copy
+of a live database) plus those files, written to a host directory configured by
 environment variable. Off-host copies are the host's job (e.g. Time Machine).
 
 **The database holds the master CV, which is the one piece of state nobody can

@@ -440,6 +440,31 @@ class PostingScreenTest extends TestCase
             ->assertFileDownloaded();
     }
 
+    /**
+     * The screen embeds the PDF and offers the editable copy beside it:
+     * reading a CV and taking it away to edit are different things.
+     */
+    public function test_the_cv_can_be_taken_away_to_edit(): void
+    {
+        $this->signIn();
+
+        $posting = $this->reviewable();
+
+        $this->page($posting)
+            ->assertActionVisible('downloadWord')
+            ->callAction('downloadWord')
+            ->assertFileDownloaded();
+    }
+
+    public function test_the_word_download_is_withheld_where_there_is_no_file(): void
+    {
+        $this->signIn();
+
+        $posting = $this->reviewable(pdf: false);
+
+        $this->page($posting)->assertActionHidden('downloadWord');
+    }
+
     // ------------------------------------------------------------------
     // The tracker.
     // ------------------------------------------------------------------
@@ -538,10 +563,16 @@ class PostingScreenTest extends TestCase
 
         if ($pdf) {
             $path = 'revisions/'.$revision->id.'.pdf';
+            $docxPath = 'revisions/'.$revision->id.'.docx';
 
             Storage::disk('pdfs')->put($path, '%PDF-1.7 a tailored CV');
+            Storage::disk('pdfs')->put($docxPath, 'PK a tailored CV');
 
-            $revision->update(['pdf_path' => $path, 'status' => RevisionStatus::Ready]);
+            $revision->update([
+                'pdf_path' => $path,
+                'docx_path' => $docxPath,
+                'status' => RevisionStatus::Ready,
+            ]);
         }
 
         $posting->fill(['current_revision_id' => $revision->id])->save();

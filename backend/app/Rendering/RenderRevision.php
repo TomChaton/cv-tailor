@@ -10,10 +10,11 @@ use App\Revisions\RevisionStatus;
 use App\Validation\RenderGuard;
 use App\Validation\RevisionIsNotRenderable;
 use App\Validation\ValidationReport;
+use Throwable;
 
 /**
- * Turns one validated revision into the PDF the owner sends, and takes it to
- * `ready`.
+ * Turns one validated revision into the PDF the owner sends and the Word file
+ * the owner edits, and takes it to `ready`.
  *
  * **Nothing reaches a PDF without passing the render guard first.** A revision
  * with a blocking finding is refused rather than rendered, and so is one
@@ -25,6 +26,11 @@ use App\Validation\ValidationReport;
  * `validated` in that case — it was produced correctly and only the conversion
  * did not happen — and `pdf_path` is left alone, because a path with no file
  * behind it is worse than no path at all.
+ *
+ * **The Word file is a convenience and never costs the revision its PDF.** It
+ * is written in the same step, from the same resolved document, so the two
+ * cannot disagree about what the CV says; a failure writing it is reported and
+ * leaves the revision `ready` with the file it can send.
  *
  * A rendered revision takes its posting with it, so the tracker the owner
  * reads does not understate what is finished.
@@ -38,6 +44,8 @@ class RenderRevision
         private readonly CvHtml $html,
         private readonly PdfConverter $converter,
         private readonly PdfStore $store,
+        private readonly DocxWriter $docxWriter,
+        private readonly DocxStore $docxStore,
         private readonly MarkPostingReady $posting,
         private readonly RenderingEvents $events,
     ) {}
@@ -64,9 +72,9 @@ class RenderRevision
         $document = $this->resolve->resolve($this->parser->parse($version->raw_content), $output);
 
         // A revision already rendered is complete and immutable. Rendering it
-        // again resolves to the same document and writes the PDF to the same
-        // path, so nothing on the model is dirty and nothing is written: a
-        // revision has one PDF, and re-rendering replaces it.
+        // again resolves to the same document and writes both files to the
+        // same paths, so nothing on the model is dirty and nothing is written:
+        // a revision has one of each, and re-rendering replaces them.
         $revision->fill(['resolved_json' => $document->toArray()])->save();
 
         $this->events->resolved($revision, $document);
@@ -74,13 +82,27 @@ class RenderRevision
         $pdf = $this->convert($revision, $document);
         $path = $this->store->put($revision, $pdf);
 
+        // A Word file that could not be written leaves the column as it
+        // stands: either null, or the path of the one a previous render of
+        // this revision put there, which is still on disk.
+        $docx = $this->docx($revision, $document);
+        $docxPath = $docx === null ? $revision->docx_path : $this->docxStore->pathFor($revision);
+
         $revision->fill([
             'pdf_path' => $path,
+            'docx_path' => $docxPath,
             'status' => RevisionStatus::Ready,
             'error' => null,
         ])->save();
 
-        $this->events->rendered($revision, $path, strlen($pdf), PdfPageCount::of($pdf));
+        $this->events->rendered(
+            $revision,
+            $path,
+            strlen($pdf),
+            PdfPageCount::of($pdf),
+            $docxPath,
+            $docx === null ? null : strlen($docx),
+        );
 
         // The posting follows from here rather than from the caller, for the
         // same reason validation is queued where the output is stored: the
@@ -103,6 +125,30 @@ class RenderRevision
             $this->events->failed($revision, $refusal->reason, $report?->blockingChecks() ?? []);
 
             throw $refusal;
+        }
+    }
+
+    /**
+     * The Word file's bytes, or null where it could not be produced.
+     *
+     * Every failure is caught, including one this application's own templates
+     * caused: the PDF is already written at this point, and the revision must
+     * reach `ready` with it whatever became of the editable copy. The file is
+     * written before the revision is saved so that a recorded path always has
+     * a file behind it.
+     */
+    private function docx(Revision $revision, ResolvedDocument $document): ?string
+    {
+        try {
+            $docx = $this->docxWriter->write($document);
+
+            $this->docxStore->put($revision, $docx);
+
+            return $docx;
+        } catch (Throwable $failure) {
+            $this->events->docxFailed($revision, $failure::class);
+
+            return null;
         }
     }
 

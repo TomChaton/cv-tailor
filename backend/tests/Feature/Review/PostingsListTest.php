@@ -818,7 +818,7 @@ class PostingsListTest extends TestCase
             ->assertTableActionVisible('download', $posting)
             ->callTableAction('download', $posting)
             ->assertFileDownloaded(
-                __('postings.pdf_filename_for_company', ['company' => 'northwind-logistics']),
+                __('postings.cv_filename_for_company', ['company' => 'northwind-logistics', 'extension' => 'pdf']),
                 '%PDF-1.7 the current one',
                 'application/pdf',
             );
@@ -837,7 +837,7 @@ class PostingsListTest extends TestCase
         Livewire::test(ListPostings::class)
             ->callTableAction('download', $posting)
             ->assertFileDownloaded(
-                __('postings.pdf_filename_for_company', ['company' => 'orsted-rail-freight-ltd']),
+                __('postings.cv_filename_for_company', ['company' => 'orsted-rail-freight-ltd', 'extension' => 'pdf']),
             );
     }
 
@@ -850,7 +850,7 @@ class PostingsListTest extends TestCase
         Livewire::test(ListPostings::class)
             ->callTableAction('download', $posting)
             ->assertFileDownloaded(
-                __('postings.pdf_filename', ['posting' => $posting->id]),
+                __('postings.cv_filename', ['posting' => $posting->id, 'extension' => 'pdf']),
             );
     }
 
@@ -863,8 +863,41 @@ class PostingsListTest extends TestCase
         Livewire::test(ListPostings::class)
             ->callTableAction('download', $posting)
             ->assertFileDownloaded(
-                __('postings.pdf_filename', ['posting' => $posting->id]),
+                __('postings.cv_filename', ['posting' => $posting->id, 'extension' => 'pdf']),
             );
+    }
+
+    public function test_the_word_download_hands_back_the_current_revisions_docx(): void
+    {
+        $this->signIn();
+
+        $posting = $this->readyToDownload(['company' => 'Northwind Logistics']);
+
+        Livewire::test(ListPostings::class)
+            ->assertTableActionVisible('downloadWord', $posting)
+            ->callTableAction('downloadWord', $posting)
+            ->assertFileDownloaded(
+                __('postings.cv_filename_for_company', ['company' => 'northwind-logistics', 'extension' => 'docx']),
+                'PK the current one',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            );
+    }
+
+    /**
+     * The editable copy is a convenience, and a render that produced the PDF
+     * and not the Word file leaves the owner the thing they can send.
+     */
+    public function test_the_word_download_is_withheld_where_the_revision_has_no_docx(): void
+    {
+        $this->signIn();
+
+        $posting = $this->readyToDownload();
+
+        $posting->currentRevision?->forceFill(['docx_path' => null])->saveQuietly();
+
+        Livewire::test(ListPostings::class)
+            ->assertTableActionVisible('download', $posting)
+            ->assertTableActionHidden('downloadWord', $posting);
     }
 
     public function test_the_download_is_withheld_where_the_current_revision_has_no_pdf(): void
@@ -884,7 +917,8 @@ class PostingsListTest extends TestCase
         $this->signIn();
 
         Livewire::test(ListPostings::class)
-            ->assertTableActionHidden('download', Posting::factory()->create());
+            ->assertTableActionHidden('download', Posting::factory()->create())
+            ->assertTableActionHidden('downloadWord', Posting::factory()->create());
     }
 
     /**
@@ -895,7 +929,7 @@ class PostingsListTest extends TestCase
     private function readyToDownload(array $attributes = []): Posting
     {
         $posting = Posting::factory()->status(PostingStatus::Ready)->create($attributes);
-        $revision = $this->rendered($posting, '%PDF-1.7 the current one');
+        $revision = $this->rendered($posting, '%PDF-1.7 the current one', 'PK the current one');
 
         $posting->update(['current_revision_id' => $revision->id]);
 
@@ -903,25 +937,31 @@ class PostingsListTest extends TestCase
     }
 
     /**
-     * A revision whose own PDF is on the disk, which is what the download
-     * reads: the path is derived from the revision's ID, so a posting has one
-     * PDF per revision and the current one decides which.
+     * A revision whose own files are on the disk, which is what the downloads
+     * read: a path is derived from the revision's ID, so a posting has one of
+     * each per revision and the current one decides which.
      */
-    private function rendered(Posting $posting, string $pdf): Revision
+    private function rendered(Posting $posting, string $pdf, string $docx): Revision
     {
         $revision = Revision::factory()
             ->for($posting)
             ->status(RevisionStatus::Validated)
             ->create(['validation_json' => []]);
 
-        $path = 'revisions/'.$revision->id.'.pdf';
+        $pdfPath = 'revisions/'.$revision->id.'.pdf';
+        $docxPath = 'revisions/'.$revision->id.'.docx';
 
-        Storage::disk('pdfs')->put($path, $pdf);
+        Storage::disk('pdfs')->put($pdfPath, $pdf);
+        Storage::disk('pdfs')->put($docxPath, $docx);
 
-        // The move the render itself makes: into `ready` carrying the path.
-        // A revision's PDF is named from its ID, so the path is only knowable
-        // once the row exists.
-        $revision->update(['pdf_path' => $path, 'status' => RevisionStatus::Ready]);
+        // The move the render itself makes: into `ready` carrying the paths.
+        // A revision's files are named from its ID, so the paths are only
+        // knowable once the row exists.
+        $revision->update([
+            'pdf_path' => $pdfPath,
+            'docx_path' => $docxPath,
+            'status' => RevisionStatus::Ready,
+        ]);
 
         return $revision;
     }

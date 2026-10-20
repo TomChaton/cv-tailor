@@ -126,8 +126,8 @@ class RevisionChainTest extends TestCase
 
     /**
      * A retried job dispatches the same work a second time. One set of
-     * findings, one PDF, and no attempt to write over a revision that has
-     * since been rendered.
+     * findings, one of each rendered file, and no attempt to write over a
+     * revision that has since been rendered.
      */
     public function test_a_duplicate_validation_dispatch_produces_one_set_of_findings_and_one_pdf(): void
     {
@@ -141,7 +141,10 @@ class RevisionChainTest extends TestCase
         $this->assertNotNull($stored);
         $this->assertSame(RevisionStatus::Ready, $stored->status);
         $this->assertCount(1, $this->converter()->converted);
-        $this->assertSame(['revisions/'.$revision->id.'.pdf'], Storage::disk('pdfs')->allFiles());
+        $this->assertSame(
+            ['revisions/'.$revision->id.'.docx', 'revisions/'.$revision->id.'.pdf'],
+            Storage::disk('pdfs')->allFiles(),
+        );
     }
 
     public function test_a_duplicate_validation_dispatch_on_a_blocked_revision_keeps_one_set_of_findings(): void
@@ -168,7 +171,10 @@ class RevisionChainTest extends TestCase
 
         $this->assertSame(RevisionStatus::Ready, $revision->fresh()?->status);
         $this->assertCount(1, $this->converter()->converted);
-        $this->assertSame(['revisions/'.$revision->id.'.pdf'], Storage::disk('pdfs')->allFiles());
+        $this->assertSame(
+            ['revisions/'.$revision->id.'.docx', 'revisions/'.$revision->id.'.pdf'],
+            Storage::disk('pdfs')->allFiles(),
+        );
     }
 
     /**
