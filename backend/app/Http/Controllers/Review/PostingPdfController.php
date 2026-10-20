@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Review;
 
 use App\Models\Posting;
 use App\Providers\Filament\ReviewPanelProvider;
-use App\Rendering\PdfFilename;
+use App\Rendering\CvFilename;
 use App\Rendering\PdfStore;
 use Illuminate\Http\Response;
 
@@ -46,7 +46,7 @@ class PostingPdfController
         return route('filament.'.ReviewPanelProvider::ID.'.'.self::ROUTE, ['posting' => $posting]);
     }
 
-    public function __invoke(Posting $posting, PdfStore $pdfs, PdfFilename $filenames): Response
+    public function __invoke(Posting $posting, PdfStore $pdfs, CvFilename $filenames): Response
     {
         $revision = $posting->currentRevision;
         $pdf = $revision === null ? null : $pdfs->read($revision);
@@ -59,7 +59,7 @@ class PostingPdfController
             'Content-Type' => 'application/pdf',
             // The filename is what a browser's own "save" offers, so the
             // inline copy and the download are named the same thing.
-            'Content-Disposition' => 'inline; filename="'.$filenames->for($posting).'"',
+            'Content-Disposition' => 'inline; filename="'.$filenames->pdf($posting).'"',
         ]);
     }
 }

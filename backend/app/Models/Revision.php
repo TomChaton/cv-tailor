@@ -42,6 +42,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property-read ?array<string, mixed> $output_json
  * @property-read ?array<array-key, mixed> $validation_json
  * @property-read ?string $pdf_path
+ * @property-read ?string $docx_path
  */
 #[ObservedBy([RevisionObserver::class])]
 #[Fillable([
@@ -61,6 +62,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'resolved_json',
     'validation_json',
     'pdf_path',
+    'docx_path',
     'status',
     'attempts',
     'error',

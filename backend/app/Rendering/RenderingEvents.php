@@ -31,14 +31,43 @@ final readonly class RenderingEvents
         ]);
     }
 
-    public function rendered(Revision $revision, string $path, int $bytes, ?int $pages): void
-    {
+    /**
+     * What one render produced: both files, on one line. `docx_path` is null
+     * where the Word file alone failed, which is the same line saying the
+     * revision has the thing it can send and not the thing it can edit.
+     */
+    public function rendered(
+        Revision $revision,
+        string $path,
+        int $bytes,
+        ?int $pages,
+        ?string $docxPath,
+        ?int $docxBytes,
+    ): void {
         $this->log->log('revision.rendered', [
             'revision_id' => $revision->id,
             'posting_id' => $revision->posting_id,
             'pdf_path' => $path,
             'bytes' => $bytes,
             'pages' => $pages,
+            'docx_path' => $docxPath,
+            'docx_bytes' => $docxBytes,
+        ]);
+    }
+
+    /**
+     * A warning: the editable copy is a convenience, so its failure does not
+     * cost the revision its PDF — but nothing else will say it is missing.
+     *
+     * The failure's class and nothing from the document: a message can quote
+     * the line it choked on, and a CV line has no business in a log.
+     */
+    public function docxFailed(Revision $revision, string $failure): void
+    {
+        $this->log->warning('revision.docx_failed', [
+            'revision_id' => $revision->id,
+            'posting_id' => $revision->posting_id,
+            'failure' => $failure,
         ]);
     }
 

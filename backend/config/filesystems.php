@@ -30,7 +30,8 @@ return [
 
     'disks' => [
 
-        // Generated PDFs. A named volume, so they survive a rebuild.
+        // A revision's rendered files — the PDF to send and the Word file to
+        // edit. A named volume, so they survive a rebuild.
         'pdfs' => [
             'driver' => 'local',
             'root' => env('CV_PDF_ROOT', storage_path('app/pdfs')),

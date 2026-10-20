@@ -164,13 +164,14 @@ class ViewPosting extends Page
     protected function getHeaderActions(): array
     {
         return [
-            // Want, Download and Discard come from the resource, so the rules
-            // they are offered under are the list's own rather than a second
-            // copy of them.
+            // Want, the two downloads and Discard come from the resource, so
+            // the rules they are offered under are the list's own rather than
+            // a second copy of them.
             $this->refreshing(PostingResource::wantAction()),
             $this->markReviewedAction(),
             $this->markAppliedAction(),
             PostingResource::downloadAction(),
+            PostingResource::downloadWordAction(),
             $this->refreshing(PostingResource::discardAction()),
         ];
     }

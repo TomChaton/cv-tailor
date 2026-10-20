@@ -11,4 +11,11 @@ return [
     'projects' => 'Independent projects',
     'awards' => 'Awards',
     'interests' => 'Interests',
+
+    // Punctuation the Word file needs stated, where the PDF's stylesheet
+    // supplies it in CSS. It is read as part of a line, so it lives here with
+    // the rest of the words.
+    'contact_field' => ':label: :value',
+    'contact_separator' => ' · ',
+    'role_title' => ':employer — :title',
 ];

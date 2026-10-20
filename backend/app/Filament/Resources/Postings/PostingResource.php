@@ -8,7 +8,8 @@ use App\Models\Posting;
 use App\Postings\DiscardPosting;
 use App\Postings\MarkPostingWanted;
 use App\Postings\PostingStatus;
-use App\Rendering\PdfFilename;
+use App\Rendering\CvFilename;
+use App\Rendering\DocxStore;
 use App\Rendering\PdfStore;
 use BackedEnum;
 use Filament\Actions\Action;
@@ -163,6 +164,7 @@ class PostingResource extends Resource
             ->recordActions([
                 self::wantAction(),
                 self::downloadAction(),
+                self::downloadWordAction(),
                 self::discardAction(),
             ]);
     }
@@ -282,7 +284,7 @@ class PostingResource extends Resource
             ->action(function (
                 Posting $record,
                 PdfStore $pdfs,
-                PdfFilename $filenames,
+                CvFilename $filenames,
             ): ?StreamedResponse {
                 $revision = $record->currentRevision;
                 $pdf = $revision === null ? null : $pdfs->read($revision);
@@ -293,8 +295,44 @@ class PostingResource extends Resource
 
                 return response()->streamDownload(
                     fn () => print $pdf,
-                    $filenames->for($record),
+                    $filenames->pdf($record),
                     ['Content-Type' => 'application/pdf'],
+                );
+            });
+    }
+
+    /**
+     * The same CV as the thing the owner can edit.
+     *
+     * Beside the PDF's download and under the same rule: offered from
+     * `docx_path`, which is the system's own record that the file exists. A
+     * revision whose Word file alone failed keeps its PDF and this is simply
+     * not offered — nothing on this screen explains that, because the log
+     * event `revision.docx_failed` is where the reason is.
+     */
+    public static function downloadWordAction(): Action
+    {
+        return Action::make('downloadWord')
+            ->label(__('postings.actions.download_word'))
+            ->icon(Heroicon::ArrowDownTray)
+            ->button()
+            ->visible(fn (Posting $record): bool => $record->currentRevision?->docx_path !== null)
+            ->action(function (
+                Posting $record,
+                DocxStore $words,
+                CvFilename $filenames,
+            ): ?StreamedResponse {
+                $revision = $record->currentRevision;
+                $docx = $revision === null ? null : $words->read($revision);
+
+                if ($docx === null) {
+                    return null;
+                }
+
+                return response()->streamDownload(
+                    fn () => print $docx,
+                    $filenames->word($record),
+                    ['Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
                 );
             });
     }

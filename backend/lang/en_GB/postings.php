@@ -52,7 +52,10 @@ return [
     'actions' => [
         'want' => 'Want',
         'discard' => 'Discard',
-        'download' => 'Download',
+        // Two files, named for what each is: the icon says they are
+        // downloads, so neither label needs to say it twice.
+        'download' => 'PDF',
+        'download_word' => 'Word',
         'mark_reviewed' => 'Mark reviewed',
         'mark_applied' => 'Mark applied',
     ],
@@ -115,8 +118,9 @@ return [
 
     // The name the downloaded CV reaches an employer under. The company's,
     // where capture found one; the posting's id where it did not, because an
-    // id is the only other thing that tells two files apart.
-    'pdf_filename_for_company' => 'cv-:company.pdf',
-    'pdf_filename' => 'cv-:posting.pdf',
+    // id is the only other thing that tells two files apart. The copy to send
+    // and the copy to edit are the same name under a different extension.
+    'cv_filename_for_company' => 'cv-:company.:extension',
+    'cv_filename' => 'cv-:posting.:extension',
 
 ];

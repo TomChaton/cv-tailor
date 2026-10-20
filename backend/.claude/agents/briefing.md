@@ -1418,13 +1418,39 @@ when the output supplied a rewording. The parser sets the flag and the resolver
 reads it, because resolving is the last point before the words reach a page and
 a check that merely reported it would leave them there.
 
-### A revision has exactly one PDF
+### A PDF is what you send, not what you edit
+
+A revision renders twice from `resolved_json`: the PDF the owner sends and a
+`.docx` the owner edits. Both read that one column and nothing else, so the two
+files cannot disagree about what the CV says.
+
+**The Word file exists because a PDF is not editable.** Tuning the policy and
+the prompt until a generated CV is right takes longer than correcting the CV by
+hand, and for a CV going out today the hand edit is the better use of the
+owner's time. So the pipeline hands over both and the owner chooses.
+
+**It carries the content and the structure, and it is not a facsimile.**
+Headings are heading styles, bullets are list items of the word processor's own
+numbering, and a role's dates sit in the paragraph under its heading. Matching
+the PDF's typography would mean embedding fonts and hand-building a layout, and
+a document built to look like the PDF fights every edit made to it — which is
+the one thing this file is for.
+
+**A failure producing the Word file never costs the revision its PDF.** The
+editable copy is a convenience; the thing the owner can send is not. A revision
+that has a PDF and no Word file is `ready`, because it is, and
+`revision.docx_failed` is where the reason is.
+
+### A revision has exactly one of each rendered file
 
 The path is derived from the revision's ID, so rendering the same revision again
-replaces the file rather than leaving a second copy nobody can tell from the
-first. Generated PDFs live on the `pdfs` disk, whose root is `CV_PDF_ROOT` and a
-named volume in the deployment; `pdf_path` holds the path relative to that root.
-An absolute path would be wrong the first time the volume moved.
+replaces the files rather than leaving a second copy nobody can tell from the
+first. They live on the `pdfs` disk, whose root is `CV_PDF_ROOT` and a named
+volume in the deployment; `pdf_path` and `docx_path` hold paths relative to that
+root. An absolute path would be wrong the first time the volume moved.
+
+Each file has a column of its own because either can be absent on its own, and a
+column is only written once the file behind it is on the disk.
 
 ### A converter failure leaves the revision `validated`
 
@@ -1456,8 +1482,19 @@ convention — so the template converts it. The text is escaped first and every
 tag is the converter's own, which is what stops a master CV or a model's output
 contributing one.
 
+**The Word file's templates are the application's own too**, beside the CV
+template: a `.docx` is a zip of XML parts, and each part — the document, the
+styles its headings name, the numbering its bullets name — is a template here,
+so the structure the owner opens is stated rather than inferred by a library.
+The inline Markdown is read by the converter above and its output walked into
+runs, because a second reading of the convention would be a second thing to
+keep in step with it.
+
 **No test starts Gotenberg.** The converter sits behind an interface and the
-test environment binds a fake, for the same reason the LLM client does.
+test environment binds a fake, for the same reason the LLM client does. The
+Word writer has an interface and no fake: there is no service behind it, and a
+test that asserts on what the owner will open has to read a package the real
+writer produced.
 
 ### Seeing what the template does
 
@@ -1579,14 +1616,18 @@ here or it is never generated from.
   reaches an employer, and a posting's id means nothing to anybody outside
   this database, so the company's name is slugged into it. Capture omits a
   company rather than guessing one, so a posting without one is ordinary and
-  still downloads, under the id.
+  still downloads, under the id. The copy to send and the copy to edit are one
+  name under two extensions: a hand-edited CV reaches an employer even more
+  surely than the generated one, so it is not named any less carefully.
 - **The record actions are buttons, side by side.** Actions that read as text
-  are easy to miss, and each of these is a decision the page exists for. They
-  stay in a row because no row ever carries three: Want is offered on
-  `captured` alone and Download only where the current revision has a PDF,
-  which a `captured` posting never has. Two buttons are not the width the list
-  needed back, and a dropdown would hide them behind a click to save none of
-  it.
+  are easy to miss, and each of these is a decision the page exists for. Want
+  is offered on `captured` alone and a download only where the file it hands
+  over exists, which a `captured` posting has neither of, so the widest a row
+  gets is the two downloads beside Discard, each labelled in a word. A dropdown
+  would hide them behind a click to save none of the width back.
+- **Each download is labelled for the file it hands over**, PDF or Word, rather
+  than both saying "Download" and leaving the owner to find out which is which.
+  The icon says they are downloads, so neither label says it twice.
 - **The list is what the panel lands on.** It is the screen the owner signs in
   to look at, so the panel registers no dashboard and Filament sends its root
   at the first item in the navigation. The order of that navigation is stated
@@ -1663,8 +1704,8 @@ is good enough to send.
   read against another rather than a record's own fields, and a record form
   dehydrates every attribute of the posting — the captured page's whole text
   among them — into the browser in order to show none of it.
-- **Want, Discard and Download come from the resource**, so the rules they are
-  offered under exist once rather than once per surface.
+- **Want, Discard and the two downloads come from the resource**, so the rules
+  they are offered under exist once rather than once per surface.
 - **The list says that its rows lead here**, rather than leaving it to
   Filament's own default, which points a record at whichever of `view` and
   `edit` the resource registers and authorises. Where a list leads is the

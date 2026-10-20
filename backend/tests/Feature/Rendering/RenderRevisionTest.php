@@ -141,7 +141,10 @@ class RenderRevisionTest extends TestCase
         $this->render()->handle($revision);
         $this->render()->handle($revision->fresh() ?? $revision);
 
-        $this->assertSame(['revisions/'.$revision->id.'.pdf'], Storage::disk('pdfs')->allFiles());
+        $this->assertSame(
+            ['revisions/'.$revision->id.'.docx', 'revisions/'.$revision->id.'.pdf'],
+            Storage::disk('pdfs')->allFiles(),
+        );
         $this->assertCount(2, $this->converter()->converted);
     }
 
